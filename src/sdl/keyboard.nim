@@ -40,7 +40,7 @@
 ##         running = false
 ##
 ##     # Get current keyboard state
-##     let keys = getKeyboardState()
+##     let keys = keyboardState()
 ##     if keys.isKeyDown(K_ESCAPE):
 ##       running = false
 ##     if keys.isKeyDown(K_LEFT):
@@ -49,7 +49,7 @@
 ##       echo "Moving right"
 ##
 ##     # Check modifier keys
-##     let mods = getModState()
+##     let mods = modState()
 ##     if (mods and modShift) != 0:
 ##       echo "Shift is pressed"
 ##
@@ -60,15 +60,15 @@
 ##
 ## | C SDL 1.2                          | Nim SDL                                      |
 ## |------------------------------------|----------------------------------------------|
-## | `SDL_GetKeyState(&numkeys)`        | `getKeyboardState()` returns `KeyboardState` |
+## | `SDL_GetKeyState(&numkeys)`        | `keyboardState()` returns `KeyboardState` |
 ## | Manual array bounds checking       | `isKeyDown()` with bounds safety             |
 ## | `SDLMod` as int                    | `KeyMods` type-safe bitmask                  |
 ## | `SDL_EnableUNICODE(1)` returns old | `enableUnicode()` returns bool               |
-## | No `KeySym` constructor            | `initKeySym()` for synthetic events          |
+## | No `KeyInfo` constructor            | `initKeyInfo()` for synthetic events          |
 ##
 ## ## Key Features
 ##
-## - **Direct state access**: `getKeyboardState()` for real-time input
+## - **Direct state access**: `keyboardState()` for real-time input
 ## - **Type-safe modifiers**: `KeyMods` bitmask with `modShift`, `modCtrl`, etc.
 ## - **Unicode support**: Enable/disable Unicode translation
 ## - **Key repeat**: Configure auto-repeat delay and interval
@@ -80,7 +80,7 @@
 ## Call `pumpEvents()` or process events before querying the state.
 ##
 ## ```nim
-## let keys = getKeyboardState()
+## let keys = keyboardState()
 ## if keys.isKeyDown(K_SPACE):
 ##   echo "Space is pressed"
 ## ```
@@ -90,7 +90,7 @@
 ## Modifier keys (Shift, Ctrl, Alt) can be queried as a bitmask.
 ##
 ## ```nim
-## let mods = getModState()
+## let mods = modState()
 ## if (mods and modCtrl) != 0:
 ##   echo "Ctrl is pressed"
 ## if (mods and modAlt) != 0:
@@ -114,6 +114,19 @@
 ## ```nim
 ## discard enableKeyRepeat(500, 30)  # 500ms delay, 30ms interval
 ## ```
+##
+## ## Type Mapping: Nim ↔ C SDL 1.2
+##
+## The `KeyInfo` type wraps `SDL_keysym`. Renamed from `KeySym` to `KeyInfo`
+## because the struct carries more than just the key symbol — it also includes
+## the physical scancode, modifier state, and Unicode character.
+##
+## | Nim `KeyInfo` | C `SDL_keysym` | Description                                    |
+## |---------------|----------------|------------------------------------------------|
+## | `scanCode`    | `scancode`     | Physical hardware key code (layout-independent)|
+## | `key`         | `sym`          | Translated virtual key (e.g. `Key.enter`)      |
+## | `mods`        | `mod`          | Modifier keys pressed (e.g. Shift + A)         |
+## | `unicode`     | `unicode`      | Generated text char (if `enableUnicode` is on) |
 ##
 ## ## See Also
 ##
@@ -141,16 +154,14 @@ const
 {.push header: "SDL_keyboard.h", bycopy, cdecl.}
 
 type
-  KeySym* {.importc: "SDL_keysym".} = object
-    ## Represents a key event with symbol, scancode, modifiers, and Unicode.
-    ## scanCode: The physical hardware key code (layout-independent).
-    scanCode* {.importc: "scancode".}: uint8
-    ## key: The translated virtual key (e.g., Key.enter). Use this 99% of the time.
-    key* {.importc: "sym".}: Key
-    ## mods: Modifier keys pressed with the key (e.g., Shift + A).
-    mods* {.importc: "mod".}: KeyMods
-    ## unicode: The generated text character (if enableUnicode is on).
-    unicode*: uint16
+  KeyInfo* {.importc: "SDL_keysym".} = object
+    ## Complete information about a key press/release event.
+    ## Read-only from outside the module — use getters.
+    ## See module docs for the C mapping table.
+    scanCode {.importc: "scancode".}: uint8
+    key {.importc: "sym".}: Key
+    mods {.importc: "mod".}: KeyMods
+    unicode: uint16
 
 {.pop.}
 
@@ -182,13 +193,13 @@ type KeyboardState* = object
 # KEY READING
 # ---------------------------------------------------------
 
-proc getKeyboardState*(): KeyboardState {.inline.} =
+proc keyboardState*(): KeyboardState {.inline.} =
   ## Returns a "snapshot" of the keyboard memory. Call ONCE per need,
   ## and reuse the object to check multiple keys.
   ##
   ## **Example:**
   ## ```nim
-  ## let keys = getKeyboardState()
+  ## let keys = keyboardState()
   ## if keys.isKeyDown(K_SPACE):
   ##   echo "Space is pressed"
   ## ```
@@ -202,7 +213,7 @@ proc isKeyDown*(state: KeyboardState, key: Key): bool {.inline.} =
   ##
   ## **Example:**
   ## ```nim
-  ## let keys = getKeyboardState()
+  ## let keys = keyboardState()
   ## if keys.isKeyDown(K_LEFT):
   ##   player.moveLeft()
   ## ```
@@ -213,12 +224,12 @@ proc isKeyDown*(state: KeyboardState, key: Key): bool {.inline.} =
 # MODIFIERS (Shift, Ctrl, Alt)
 # ---------------------------------------------------------
 
-proc getModState*(): KeyMods {.inline.} =
+proc modState*(): KeyMods {.inline.} =
   ## Bitmask of all currently pressed modifiers.
   ##
   ## **Example:**
   ## ```nim
-  ## let mods = getModState()
+  ## let mods = modState()
   ## if (mods and modShift) != 0:
   ##   echo "Shift is pressed"
   ## ```
@@ -266,12 +277,12 @@ proc disableKeyRepeat*(): bool {.inline.} =
   ## Completely disables key repeat.
   sdlOk SDL_EnableKeyRepeat(0, 0)
 
-proc getKeyRepeat*(): tuple[delay, interval: int32] {.inline.} =
+proc keyRepeat*(): tuple[delay, interval: int32] {.inline.} =
   ## Current key repeat settings in a clean tuple.
   ##
   ## **Example:**
   ## ```nim
-  ## let (delay, interval) = getKeyRepeat()
+  ## let (delay, interval) = keyRepeat()
   ## echo "Delay: ", delay, "ms, Interval: ", interval, "ms"
   ## ```
   var d, i: cint
@@ -283,36 +294,36 @@ proc getKeyRepeat*(): tuple[delay, interval: int32] {.inline.} =
 # GETTERS (Zero Cost Access)
 # =========================================================
 
-proc scanCode*(k: KeySym): uint8 {.inline.} =
+proc scanCode*(k: KeyInfo): uint8 {.inline.} =
   ## Physical hardware key code (layout-independent).
   k.scanCode
 
-proc key*(k: KeySym): Key {.inline.} =
+proc key*(k: KeyInfo): Key {.inline.} =
   ## Translated virtual key (e.g., Key.enter). Use this 99% of the time.
   k.key
 
-proc mods*(k: KeySym): KeyMods {.inline.} =
+proc mods*(k: KeyInfo): KeyMods {.inline.} =
   ## Modifier keys pressed with the key (e.g., Shift + A).
   k.mods
 
-proc unicode*(k: KeySym): uint16 {.inline.} =
+proc unicode*(k: KeyInfo): uint16 {.inline.} =
   ## Generated text character (if enableUnicode is on).
   k.unicode
 
 # --- SYNTHETIC CONSTRUCTOR (Replaces Setters) ---
-proc initKeySym*(
+proc initKeyInfo*(
     key: Key;
     scanCode: uint8 = 0;
     mods: KeyMods = cast[KeyMods](0);
     unicode: uint16 = 0
-  ): KeySym {.inline.} =
-  ## Constructs a synthetic KeySym.
+  ): KeyInfo {.inline.} =
+  ## Constructs a synthetic KeyInfo.
   ## Extremely useful for creating artificial events (Bots, Replays, Macros).
   ##
   ## **Example:**
   ## ```nim
   ## # Create a synthetic key event for bots or replays
-  ## let sym = initKeySym(K_SPACE, mods = modShift)
+  ## let sym = initKeyInfo(K_SPACE, mods = modShift)
   ## ```
   result.key = key
   result.scanCode = scanCode
@@ -323,12 +334,12 @@ proc initKeySym*(
 # UTILITIES
 # ---------------------------------------------------------
 
-proc getKeyName*(key: Key): cstring {.inline.} =
+proc keyName*(key: Key): cstring {.inline.} =
   ## Converts a virtual key to a user-readable string.
   ##
   ## **Example:**
   ## ```nim
-  ## let name = getKeyName(K_SPACE)
+  ## let name = keyName(K_SPACE)
   ## echo "Key name: ", $name  # "space"
   ## ```
   SDL_GetKeyName(key)

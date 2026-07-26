@@ -91,7 +91,7 @@ runMain:
       of EventType.quit:
         running = false
       of EventType.keyDown:
-        if evt.key.keySym.key == Key.escape:
+        if evt.key.keyInfo.key == Key.escape:
           running = false
       else: discard
 

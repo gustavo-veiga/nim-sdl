@@ -46,7 +46,7 @@
 ##   while running:
 ##     for event in pollEvents():
 ##       if event.kind == keyDown:
-##         let key = event.key.keySym.key
+##         let key = event.key.keyInfo.key
 ##         case key
 ##         of K_ESCAPE:
 ##           running = false
@@ -58,7 +58,7 @@
 ##           discard
 ##
 ##         # Check modifiers
-##         let mods = event.key.keySym.mods
+##         let mods = event.key.keyInfo.mods
 ##         if (mods and modShift) != 0:
 ##           echo "Shift was pressed"
 ##

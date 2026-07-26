@@ -36,7 +36,7 @@
 ##       of quit:
 ##         running = false
 ##       of keyDown:
-##         let key = event.key.keySym.sym
+##         let key = event.key.keyInfo.key
 ##         if key == K_ESCAPE:
 ##           running = false
 ##       else:
@@ -116,7 +116,7 @@ type
     kind {.importc: "type".}: EventType
     deviceIndex {.importc: "which".}: uint8
     state: ButtonState
-    keysym: KeySym
+    keysym: KeyInfo
 
   MouseMotionEvent* {.importc: "SDL_MouseMotionEvent".} = object
     ## Mouse movement event with position and relative motion.
@@ -317,8 +317,9 @@ proc deviceIndex*(e: KeyboardEvent): uint8 {.inline.} = e.deviceIndex
   ## Keyboard device index.
 proc state*(e: KeyboardEvent): ButtonState {.inline.} = e.state
   ## Button state (pressed or released).
-proc keySym*(e: KeyboardEvent): KeySym {.inline.} = e.keysym
-  ## Key symbol information.
+proc keyInfo*(e: KeyboardEvent): KeyInfo {.inline.} = e.keysym
+  ## Key press information. Nim wrapper for C `SDL_keysym`.
+  ## See `sdl/keyboard` for the `KeyInfo` struct fields.
 
 # MouseMotionEvent
 proc kind*(e: MouseMotionEvent): EventType {.inline.} = e.kind
@@ -438,7 +439,7 @@ proc createKeyEvent*(key: Key, pressed: bool): Event {.inline.} =
   ## ```
   result.kind = if pressed: EventType.keyDown else: EventType.keyUp
   result.key.state = if pressed: ButtonState.pressed else: ButtonState.released
-  result.key.keySym = initKeySym(key)
+  result.key.keysym = initKeyInfo(key)
 
 # =========================================================
 # PUBLIC API (The Minimalist Game Loop)

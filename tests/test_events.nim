@@ -16,11 +16,11 @@ suite "Events":
 
   test "createKeyEvent":
     let ev = createKeyEvent(Key.escape, pressed = true)
-    check ev.key.keySym.key == Key.escape
+    check ev.key.keyInfo.key == Key.escape
 
   test "createKeyEvent with released":
     let ev = createKeyEvent(Key.a, pressed = false)
-    check ev.key.keySym.key == Key.a
+    check ev.key.keyInfo.key == Key.a
 
   test "pushEvent / pollEvent":
     proc SDL_Init(flags: uint32): cint {.importc, header: "SDL.h".}
@@ -31,5 +31,5 @@ suite "Events":
     var outEv: Event
     check pollEvent(outEv) == true
     check outEv.kind == EventType.keyDown
-    check outEv.key.keySym.key == Key.escape
+    check outEv.key.keyInfo.key == Key.escape
     SDL_Quit()

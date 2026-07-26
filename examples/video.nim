@@ -47,7 +47,7 @@ proc runExample() =
         running = false
 
       of EventType.keyDown:
-        let key = evt.key.keySym.key
+        let key = evt.key.keyInfo.key
         if key == Key.escape:
           echo "[Video Example] ESC pressed. Exiting."
           running = false

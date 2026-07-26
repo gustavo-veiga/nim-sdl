@@ -25,7 +25,7 @@ while running:
       running = false
 
     of EventType.keyDown:
-      let key = evt.key.keySym.key
+      let key = evt.key.keyInfo.key
       if key == Key.escape: running = false
       elif key == Key.up:    playerRect.y -= 10
       elif key == Key.down:  playerRect.y += 10

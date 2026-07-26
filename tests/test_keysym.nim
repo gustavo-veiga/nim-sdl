@@ -1,7 +1,7 @@
 import std/unittest
 import sdl/keysym
 
-suite "KeySym":
+suite "KeyInfo":
   test "Key enum values":
     check ord(Key.unknown) == 0
     check ord(Key.a) == 97
