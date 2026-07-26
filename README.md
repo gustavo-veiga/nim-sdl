@@ -22,6 +22,9 @@ A modern, memory-safe Nim wrapper for **SDL 1.2** — designed for retro hardwar
 | Callback hell for audio conversion       | `AudioCVT` with `initAudioSpec(freq, ch, samples, fmt)` — no callback required    |
 | Global state, no scoping                 | `let ctx = sdlInit(flags)` / `defer: ctx.quit()`                                  |
 | Header-only, no build system             | Single `import sdl` — `nimble` handles `-lSDL` + companion libs                   |
+| Write directly in C                      | Write in **Nim**, ship **C99 source** — compiles with any C99 compiler, no Nim needed |
+
+> **No Nim on the target.** Nim compiles down to **C99** — the most portable C standard still in widespread use. You develop the game in Nim, but what you ship is plain C source (or a precompiled binary). On the target side, only a **C99-compatible compiler** (GCC, Clang, MSVC, TinyCC, SDCC, etc.) and the SDL 1.2 libraries are needed. No Nim toolchain required. Ideal for cross-compilation to retro consoles, embedded systems, and platforms where installing Nim isn't feasible.
 
 ---
 
