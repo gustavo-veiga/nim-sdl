@@ -65,12 +65,19 @@
 ##
 ## ## Advantages over C SDL_gfx
 ##
-## | C SDL_gfx                      | Nim SDL                     |
-## |--------------------------------|-----------------------------|
-## | `SDL_Surface *` manual free    | `Surface` RAII auto-free    |
-## | Integer parameters for smooth  | `bool smooth` parameter     |
-## | Manual size calculation        | `calcRotozoomSize()` helper |
-## | Error-prone pointer operations | Safe Option returns         |
+## | C SDL_gfx                      | Nim SDL                                       |
+## |--------------------------------|-----------------------------------------------|
+## | `SDL_Surface *` manual free    | `Surface` RAII auto-free                      |
+## | Integer parameters for smooth  | `bool smooth` parameter                       |
+## | Manual size calculation        | `calcRotozoomSize()`/`calcZoomSize()` helpers |
+## | Error-prone pointer operations | Safe Option returns                           |
+##
+## ## API Highlights
+##
+## - **RAII:** Output `Surface` auto-freed on scope exit
+## - **Safe:** All transforms return `Option[Surface]` — no null pointers
+## - **`bool` API:** `smooth` parameter instead of C `int` flags
+## - **Size helpers:** `calcRotozoomSize()` / `calcZoomSize()` for pre-allocation
 ##
 ## ## Transformation Types
 ##
@@ -115,9 +122,6 @@ when defined(gfx):
   # 2. PUBLIC API
   # =========================================================
 
-  template toSmoothFlag(smooth: bool): cint =
-    if smooth: 1 else: 0
-
   proc rotozoom*(src: var Surface, angle: float, zoom: float = 1.0, smooth: bool = true): Option[Surface] {.inline.} =
     ## Rotates and zooms a surface with optional anti-aliasing.
     ##
@@ -131,7 +135,7 @@ when defined(gfx):
     ## ```
     ##
     ## **Note:** Set `smooth = true` for anti-aliased output (slower but higher quality).
-    let raw = rotozoomSurface(src.unsafeRaw, cdouble(angle), cdouble(zoom), smooth.toSmoothFlag())
+    let raw = rotozoomSurface(src.unsafeRaw, cdouble(angle), cdouble(zoom), cint(smooth))
     if raw.isNil: none(Surface)
     else: some(assumeRaw[Surface](raw))
 
@@ -142,7 +146,7 @@ when defined(gfx):
     ## ```nim
     ## let result = rotozoom(sprite, 45.0, 2.0, 1.0, smooth = true)
     ## ```
-    let raw = rotozoomSurfaceXY(src.unsafeRaw, cdouble(angle), cdouble(zoomX), cdouble(zoomY), smooth.toSmoothFlag())
+    let raw = rotozoomSurfaceXY(src.unsafeRaw, cdouble(angle), cdouble(zoomX), cdouble(zoomY), cint(smooth))
     if raw.isNil: none(Surface)
     else: some(assumeRaw[Surface](raw))
 
@@ -157,7 +161,7 @@ when defined(gfx):
     ## # Scale non-uniformly (stretch)
     ## let stretched = zoom(sprite, 3.0, 0.5)
     ## ```
-    let raw = zoomSurface(src.unsafeRaw, cdouble(zoomX), cdouble(zoomY), smooth.toSmoothFlag())
+    let raw = zoomSurface(src.unsafeRaw, cdouble(zoomX), cdouble(zoomY), cint(smooth))
     if raw.isNil: none(Surface)
     else: some(assumeRaw[Surface](raw))
 
