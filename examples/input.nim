@@ -13,7 +13,6 @@ runMain:
 
   var
     running = true
-    evt: Event
 
     player = initRect(300, 100, 40, 40)
 
@@ -26,13 +25,13 @@ runMain:
     touchColor = screen.mapRGB(255, 50, 50)
 
   while running:
-    while pollEvent(evt):
-      case evt.kind:
+    for event in pollEvents():
+      case event.kind:
       of EventType.quit:
         running = false
 
       of EventType.keyDown:
-        let key = evt.key.keyInfo.key
+        let key = event.key.keyInfo.key
         if key == Key.escape: running = false
         elif key == Key.up:    player.y -= 15
         elif key == Key.down:  player.y += 15
@@ -40,13 +39,13 @@ runMain:
         elif key == Key.right: player.x += 15
 
       of EventType.mouseMotion:
-        cursor.x = int16(evt.motion.x)
-        cursor.y = int16(evt.motion.y)
+        cursor.x = int16(event.motion.x)
+        cursor.y = int16(event.motion.y)
 
       of EventType.mouseButtonDown:
         touching = true
-        cursor.x = int16(evt.button.x)
-        cursor.y = int16(evt.button.y)
+        cursor.x = int16(event.button.x)
+        cursor.y = int16(event.button.y)
 
       of EventType.mouseButtonUp:
         touching = false

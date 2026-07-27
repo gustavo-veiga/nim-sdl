@@ -37,17 +37,16 @@ proc runExample() =
   echo "[Video Example] Screen rendered. Waiting for input..."
 
   var running = true
-  var evt: Event
 
   while running:
-    while pollEvent(evt):
-      case evt.kind:
+    for event in pollEvents():
+      case event.kind:
       of EventType.quit:
         echo "[Video Example] Window close received."
         running = false
 
       of EventType.keyDown:
-        let key = evt.key.keyInfo.key
+        let key = event.key.keyInfo.key
         if key == Key.escape:
           echo "[Video Example] ESC pressed. Exiting."
           running = false

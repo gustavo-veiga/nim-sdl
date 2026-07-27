@@ -11,7 +11,6 @@ let screen = screenOpt.get()
 
 var
   running = true
-  evt: Event
 
   playerRect = initRect(300, 100, 40, 40)
 
@@ -19,13 +18,13 @@ var
   playerColor = screen.mapRGB(255, 0, 0)
 
 while running:
-  while pollEvent(evt):
-    case evt.kind:
+  for event in pollEvents():
+    case event.kind:
     of EventType.quit:
       running = false
 
     of EventType.keyDown:
-      let key = evt.key.keyInfo.key
+      let key = event.key.keyInfo.key
       if key == Key.escape: running = false
       elif key == Key.up:    playerRect.y -= 10
       elif key == Key.down:  playerRect.y += 10
