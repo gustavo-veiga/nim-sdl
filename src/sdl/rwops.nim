@@ -189,6 +189,10 @@ proc openFile*(file: string, mode: string = "rb"): Option[RWops] {.inline.} =
   ## ```
   SDL_RWFromFile(file.cstring, mode.cstring).toOption(RWops)
 
+proc openFile*(file: cstring, mode: cstring = "rb"): Option[RWops] {.inline.} =
+  ## `cstring` overload of `openFile`. Avoids string allocation.
+  SDL_RWFromFile(file, mode).toOption(RWops)
+
 proc openMemory*(mem: pointer, size: int): Option[RWops] {.inline.} =
   ## Creates a RWops stream from a memory buffer. Returns `some(RWops)` on success, `none` on failure.
   ##

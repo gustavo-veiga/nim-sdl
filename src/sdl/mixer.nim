@@ -31,7 +31,7 @@
 ##   initMixer(mp3)
 ##   defer: quitMixer()
 ##
-##   openAudio(44100'u32, s16Lsb, 2'u8, 1024)
+##   openMixAudio(44100'u32, s16Lsb, 2'u8, 1024)
 ##
 ##   # Load and play a sound effect
 ##   let explosion = loadWav("explosion.wav")
@@ -118,9 +118,6 @@ when defined(mixer):
     mixDefaultChannels* = 2
       ## Default number of audio channels (stereo).
 
-    mixMaxVolume* = 128
-      ## Maximum volume level.
-
     infiniteLoops* = -1
       ## Pass to `play()` to loop a sound or music forever.
 
@@ -175,7 +172,7 @@ when defined(mixer):
       flac       ## FLAC file
       modPlug    ## MOD via libmodplug
 
-    MixFunc* = proc(udata: pointer, stream: AudioBuffer, len: cint) {.cdecl.}
+    MixerCallback* = proc(udata: pointer, stream: AudioBuffer, len: cint) {.cdecl.}
       ## Callback for custom audio mixing.
 
     MusicFinishedFunc* = proc() {.cdecl.}
@@ -270,8 +267,8 @@ when defined(mixer):
   proc Mix_HaltGroup(tag: cint): cint {.importc.}
   proc Mix_FadeOutGroup(tag: cint, ms: cint): cint {.importc.}
 
-  proc Mix_SetPostMix(mix_func: MixFunc, arg: pointer) {.importc.}
-  proc Mix_HookMusic(mix_func: MixFunc, arg: pointer) {.importc.}
+  proc Mix_SetPostMix(mix_func: MixerCallback, arg: pointer) {.importc.}
+  proc Mix_HookMusic(mix_func: MixerCallback, arg: pointer) {.importc.}
   proc Mix_HookMusicFinished(music_finished: MusicFinishedFunc) {.importc.}
   proc Mix_GetMusicHookData(): pointer {.importc.}
   proc Mix_ChannelFinished(channel_finished: ChannelFinishedFunc) {.importc.}
@@ -339,7 +336,7 @@ when defined(mixer):
 
   proc initMixer*(flags: MixInitFlag) {.inline.} =
     ## Initializes SDL_mixer with the specified format support flags.
-    ## Call before `openAudio()` and any loading/playback operations.
+    ## Call before `openMixAudio()` and any loading/playback operations.
     ##
     ## **Example:**
     ## ```nim
@@ -365,7 +362,7 @@ when defined(mixer):
     let p = Mix_Linked_Version()
     if p.isNil: none(Version) else: some(p[])
 
-  proc openAudio*(
+  proc openMixAudio*(
       frequency: uint32 = mixDefaultFrequency,
       format: AudioFormat = mixDefaultFormat,
       channels: uint8 = mixDefaultChannels,
@@ -376,26 +373,29 @@ when defined(mixer):
     ##
     ## **Example:**
     ## ```nim
-    ## openAudio(44100, s16Lsb, 2, 1024)
+    ## openMixAudio(44100, s16Lsb, 2, 1024)
     ## ```
     discard sdlCheck Mix_OpenAudio(cint(frequency), uint16(format), cint(channels), cint(chunksize))
 
   proc closeMixAudio*() {.inline.} =
-    ## Closes the audio device opened by `openAudio()`.
+    ## Closes the audio device opened by `openMixAudio()`.
     Mix_CloseAudio()
 
-  proc allocateChannels*(numChannels: int): cint {.inline.} =
+  proc allocateChannels*(numChannels: int): int {.inline.} =
     ## Allocates the number of mixing channels. Can be called multiple times.
     ## Returns the actual number allocated.
-    Mix_AllocateChannels(cint(numChannels))
+    Mix_AllocateChannels(cint(numChannels)).int
 
-  proc querySpec*(frequency: var cint, format: var AudioFormat, channels: var cint): bool {.inline.} =
+  proc querySpec*(): Option[tuple[frequency: cint, format: AudioFormat, channels: cint]] {.inline.} =
     ## Queries the current audio device specifications.
-    ## Returns `true` if audio is open.
+    ## Returns `none` if the audio device is not open.
+    var freq: cint
     var rawFormat: uint16
-    let res = Mix_QuerySpec(addr frequency, addr rawFormat, addr channels) != 0
-    format = cast[AudioFormat](rawFormat)
-    return res
+    var chans: cint
+    if sdlNonZero Mix_QuerySpec(addr freq, addr rawFormat, addr chans):
+      some((frequency: freq, format: cast[AudioFormat](rawFormat), channels: chans))
+    else:
+      none(tuple[frequency: cint, format: AudioFormat, channels: cint])
 
   proc numChunkDecoders*(): int {.inline.} =
     ## Returns the number of available sound effect decoders.
@@ -413,8 +413,9 @@ when defined(mixer):
     ## Returns the name of the music decoder at the given index.
     Mix_GetMusicDecoder(cint(index))
 
-  proc loadWav*(file: string): Option[Chunk] {.inline.} =
+  proc loadWav*(file: cstring): Option[Chunk] {.inline.} =
     ## Loads a WAV file from disk into a `Chunk`. Returns `none` on failure.
+    ## Avoids string allocation when called with `cstring`.
     ##
     ## **Example:**
     ## ```nim
@@ -427,12 +428,16 @@ when defined(mixer):
       return none(Chunk)
     Mix_LoadWAV_RW(fileOpt.get().unsafeRaw(), 0).toOption(Chunk)
 
+  proc loadWav*(file: string): Option[Chunk] {.inline.} =
+    ## `string` overload of `loadWav`. Converts to `cstring` internally.
+    loadWav(file.cstring)
+
   proc loadWav*(stream: var RWops): Option[Chunk] {.inline.} =
     ## Loads a WAV file from an open RWops stream into a `Chunk`.
     assert not stream.unsafeRaw().isNil
     Mix_LoadWAV_RW(stream.unsafeRaw(), 0).toOption(Chunk)
 
-  proc loadMus*(file: string): Option[Music] {.inline.} =
+  proc loadMus*(file: cstring): Option[Music] {.inline.} =
     ## Loads a music file from disk into a `Music`. Supports MP3, OGG, FLAC, etc.
     ## Returns `none` on failure.
     ##
@@ -442,7 +447,11 @@ when defined(mixer):
     ## if bgm.isSome:
     ##   discard bgm.get.play(loops = -1)
     ## ```
-    Mix_LoadMUS(file.cstring).toOption(Music)
+    Mix_LoadMUS(file).toOption(Music)
+
+  proc loadMus*(file: string): Option[Music] {.inline.} =
+    ## `string` overload of `loadMus`. Converts to `cstring` internally.
+    loadMus(file.cstring)
 
   proc loadMus*(stream: var RWops, freesrc: cint = 0): Option[Music] {.inline.} =
     ## Loads music from an open RWops stream. Detects format automatically.
@@ -537,7 +546,7 @@ when defined(mixer):
     ## discard channel.halt()  # Stop specific channel
     ## discard halt()  # Stop all channels
     ## ```
-    Mix_HaltChannel(cint(channel)) == 0
+    sdlOk Mix_HaltChannel(cint(channel))
 
   proc expire*(channel: AudioChannel, ticks: int): int {.inline.} =
     ## Sets a timeout for playback on the given channel.
@@ -605,11 +614,11 @@ when defined(mixer):
     assert m.raw != nil
     sdlOk Mix_FadeInMusicPos(m.raw, cint(loops), cint(ms), position)
 
-  proc `volumeMusic=`*(volume: Volume): Volume {.inline, discardable.} =
+  proc `musicVolume=`*(volume: Volume): Volume {.inline, discardable.} =
     ## Sets the volume for music playback (0-128).
     Mix_VolumeMusic(cint(volume))
 
-  proc volumeMusic*(): Volume {.inline.} =
+  proc musicVolume*(): Volume {.inline.} =
     ## Returns the current music volume.
     Mix_VolumeMusic(-1)
 
@@ -625,9 +634,9 @@ when defined(mixer):
     ## ```
     sdlOk Mix_HaltMusic()
 
-  proc fadeOutMusic*(ms: cint): bool {.inline.} =
+  proc fadeOutMusic*(ms: int): bool {.inline.} =
     ## Fades out music over `ms` milliseconds.
-    Mix_FadeOutMusic(ms) != 0
+    sdlNonZero Mix_FadeOutMusic(cint(ms))
 
   proc fadingMusic*(): MixFading {.inline.} =
     ## Returns the current fade state of music playback.
@@ -657,9 +666,13 @@ when defined(mixer):
     ## Seeks music to the given position in seconds.
     sdlOk Mix_SetMusicPosition(position)
 
-  proc musicCmd*(command: string): bool {.inline.} =
+  proc musicCmd*(command: cstring): bool {.inline.} =
     ## Sets an external music player command.
-    sdlOk Mix_SetMusicCMD(command.cstring)
+    sdlOk Mix_SetMusicCMD(command)
+
+  proc musicCmd*(command: string): bool {.inline.} =
+    ## `string` overload of `musicCmd`. Converts to `cstring` internally.
+    musicCmd(command.cstring)
 
   proc reserveChannels*(num: int): int {.inline, discardable.} =
     ## Reserves the first `num` channels so they are never auto-assigned.
@@ -668,7 +681,7 @@ when defined(mixer):
 
   proc assign*(channel: AudioChannel, group: AudioGroup): bool {.inline.} =
     ## Assigns a channel to a group for batch operations.
-    Mix_GroupChannel(cint(channel), cint(group)) != 0
+    sdlNonZero Mix_GroupChannel(cint(channel), cint(group))
 
   proc assign*(fromChannel, toChannel: AudioChannel, group: AudioGroup): int {.inline, discardable.} =
     ## Assigns a range of channels to a group.
@@ -698,11 +711,11 @@ when defined(mixer):
     ## Fades out all channels in the specified group over `ms` milliseconds.
     Mix_FadeOutGroup(cint(group), cint(ms))
 
-  proc setPostMix*(mixFunc: MixFunc, arg: pointer = nil) {.inline.} =
+  proc `postMix=`*(mixFunc: MixerCallback, arg: pointer = nil) {.inline.} =
     ## Sets a callback that is called after all mixing is done.
     Mix_SetPostMix(mixFunc, arg)
 
-  proc hookMusic*(mixFunc: MixFunc, arg: pointer = nil) {.inline.} =
+  proc hookMusic*(mixFunc: MixerCallback, arg: pointer = nil) {.inline.} =
     ## Hooks a custom mixer function that replaces the standard music mixer.
     Mix_HookMusic(mixFunc, arg)
 
@@ -710,7 +723,7 @@ when defined(mixer):
     ## Sets a callback for when music playback finishes.
     Mix_HookMusicFinished(musicFinished)
 
-  proc getMusicHookData*(): pointer {.inline.} =
+  proc musicHookData*(): pointer {.inline.} =
     ## Returns the user data pointer passed to `hookMusic()`.
     Mix_GetMusicHookData()
 
@@ -721,15 +734,15 @@ when defined(mixer):
   proc registerEffect*(channel: AudioChannel, f: EffectFunc, d: EffectDoneFunc, arg: pointer): bool {.inline.} =
     ## Registers an audio effect callback for the given channel.
     ## The effect is applied during mixing.
-    Mix_RegisterEffect(cint(channel), f, d, arg) != 0
+    sdlNonZero Mix_RegisterEffect(cint(channel), f, d, arg)
 
   proc unregisterEffect*(channel: AudioChannel, f: EffectFunc): bool {.inline.} =
     ## Removes a previously registered effect from the channel.
-    Mix_UnregisterEffect(cint(channel), f) != 0
+    sdlNonZero Mix_UnregisterEffect(cint(channel), f)
 
   proc unregisterAllEffects*(channel: AudioChannel): bool {.inline.} =
     ## Removes all effects from the given channel.
-    Mix_UnregisterAllEffects(cint(channel)) != 0
+    sdlNonZero Mix_UnregisterAllEffects(cint(channel))
 
   proc `panning=`*(channel: AudioChannel, pan: tuple[left: uint8, right: uint8]): bool {.inline, discardable.} =
     ## Sets stereo panning for a channel (0-255 each).
@@ -739,11 +752,11 @@ when defined(mixer):
     ## channel.panning = (left: 255, right: 0)  # Full left
     ## channel.panning = (left: 128, right: 128)  # Center
     ## ```
-    Mix_SetPanning(cint(channel), pan.left, pan.right) != 0
+    sdlNonZero Mix_SetPanning(cint(channel), pan.left, pan.right)
 
   proc clearPanning*(channel: AudioChannel): bool {.inline, discardable.} =
     ## Resets panning to full stereo (both channels at 255).
-    Mix_SetPanning(cint(channel), 255, 255) != 0
+    sdlNonZero Mix_SetPanning(cint(channel), 255, 255)
 
   proc `position=`*(channel: AudioChannel, pos: tuple[angle: int16, distance: uint8]): bool {.inline, discardable.} =
     ## Sets 3D position: angle (0-360) and distance (0-255).
@@ -752,36 +765,40 @@ when defined(mixer):
     ## ```nim
     ## channel.position = (angle: 90, distance: 100)  # To the right, medium distance
     ## ```
-    Mix_SetPosition(cint(channel), pos.angle, pos.distance) != 0
+    sdlNonZero Mix_SetPosition(cint(channel), pos.angle, pos.distance)
 
   proc clearPosition*(channel: AudioChannel): bool {.inline, discardable.} =
     ## Resets 3D position to center (angle=0, distance=0).
-    Mix_SetPosition(cint(channel), 0, 0) != 0
+    sdlNonZero Mix_SetPosition(cint(channel), 0, 0)
 
   proc `distance=`*(channel: AudioChannel, distance: uint8): bool {.inline.} =
     ## Sets the distance attenuation for a channel (0=close, 255=far).
-    Mix_SetDistance(cint(channel), distance) != 0
+    sdlNonZero Mix_SetDistance(cint(channel), distance)
 
   proc `reverseStereo=`*(channel: AudioChannel, flip: bool): bool {.inline.} =
     ## Reverses the stereo channels if `flip` is true.
-    Mix_SetReverseStereo(cint(channel), cint(flip)) != 0
+    sdlNonZero Mix_SetReverseStereo(cint(channel), cint(flip))
 
-  proc setSynchroValue*(value: int): bool {.inline.} =
+  proc `synchroValue=`*(value: int): bool {.inline.} =
     ## Sets a synchronization value for external music players.
     sdlOk Mix_SetSynchroValue(cint(value))
 
-  proc getSynchroValue*(): int {.inline.} =
+  proc synchroValue*(): int {.inline.} =
     ## Gets the current synchronization value.
     Mix_GetSynchroValue()
 
-  proc setSoundFonts*(paths: string): bool {.inline.} =
+  proc `soundFonts=`*(paths: cstring): bool {.inline.} =
     ## Sets the SoundFont search paths (colon-separated on Unix, semicolon on Windows).
-    Mix_SetSoundFonts(paths.cstring) != 0
+    sdlNonZero Mix_SetSoundFonts(paths)
 
-  proc getSoundFonts*(): cstring {.inline.} =
+  proc `soundFonts=`*(paths: string): bool {.inline.} =
+    ## `string` overload of `soundFonts=`. Converts to `cstring` internally.
+    soundFonts = paths.cstring
+
+  proc soundFonts*(): cstring {.inline.} =
     ## Returns the current SoundFont search paths.
     Mix_GetSoundFonts()
 
   proc eachSoundFont*(fn: SoundFontIterFunc, data: pointer): bool {.inline.} =
     ## Iterates over each SoundFont path, calling `fn` for each.
-    Mix_EachSoundFont(fn, data) != 0
+    sdlNonZero Mix_EachSoundFont(fn, data)

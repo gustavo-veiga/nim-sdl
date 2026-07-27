@@ -9,7 +9,7 @@ when defined(mixer):
     defer: guard.quit()
 
     echo "[Mixer] Opening audio device (22kHz, Stereo)..."
-    openAudio()
+    openMixAudio()
     defer: closeMixAudio()
 
     echo "[Mixer] Reserving 2 channels for effects..."
