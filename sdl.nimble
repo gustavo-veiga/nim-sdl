@@ -42,3 +42,6 @@ task distclean, "Remove all build artifacts and generated files":
 
 task coverage, "Generate HTML coverage report (requires lcov, genhtml)":
   exec "nim r scripts/coverage.nim"
+
+task docs, "Generate HTML documentation into docs/":
+  exec "nim doc --hints:off --project --outdir:docs src/sdl.nim"

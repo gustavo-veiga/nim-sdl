@@ -46,6 +46,7 @@ proc main() =
   removeIfExists("coverage_html")
   removeIfExists("coverage.info")
   removeIfExists("generated_not_to_break_here")
+  removeIfExists("docs")
   
   findAndRemoveNimcache()
   

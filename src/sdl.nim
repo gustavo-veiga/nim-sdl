@@ -122,3 +122,17 @@ export
   rwops,
   endian,
   main
+
+when defined(nimdoc):
+  import
+    sdl/gfxprimitives,
+    sdl/gfxfilter,
+    sdl/framerate,
+    sdl/rotozoom,
+    sdl/mixer,
+    sdl/ttf,
+    sdl/image,
+    sdl/net,
+    sdl/rtf,
+    sdl/pango,
+    sdl/dreamcast

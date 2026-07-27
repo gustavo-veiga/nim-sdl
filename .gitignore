@@ -5,3 +5,4 @@ build/
 coverage_html/
 coverage.info
 generated_not_to_break_here
+docs/
