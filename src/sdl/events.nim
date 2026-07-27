@@ -68,6 +68,7 @@
 ## - `sdl/joystick` - Joystick initialization and access
 
 import keyboard, joystick, keysym
+import private/utils
 
 type
   ButtonState* {.pure, size: sizeof(uint8).} = enum
@@ -461,21 +462,21 @@ proc pollEvent*(event: var Event): bool {.inline.} =
   ##   of quit: running = false
   ##   else: discard
   ## ```
-  result = (SDL_PollEvent(addr event) == 1)
+  sdlTrue SDL_PollEvent(addr event)
 
 proc pollEvent*(): bool {.inline.} =
   ## Processes the queue and discards the event immediately.
   ## Useful for cleanup loops: `while pollEvent(): discard`
-  result = (SDL_PollEvent(nil) == 1)
+  sdlTrue SDL_PollEvent(nil)
 
 proc waitEvent*(event: var Event): bool {.inline.} =
   ## Blocks until the next event is available.
   ## Useful for menus or pause screens to save CPU.
-  result = (SDL_WaitEvent(addr event) == 1)
+  sdlTrue SDL_WaitEvent(addr event)
 
 proc waitEvent*(): bool {.inline.} =
   ## Freezes until any event occurs, discarding the read.
-  result = (SDL_WaitEvent(nil) == 1)
+  sdlTrue SDL_WaitEvent(nil)
 
 proc pushEvent*(event: Event): bool {.inline.} =
   ## Injects an event into the queue.
@@ -485,27 +486,27 @@ proc pushEvent*(event: Event): bool {.inline.} =
   ## discard pushEvent(Event(kind: EventType.quit))
   ## ```
   var ev = event # Nim creates a safe mutable copy on the stack
-  result = (SDL_PushEvent(addr ev) == 0)
+  sdlOk SDL_PushEvent(addr ev)
 
-proc countEvents*(mask: EventMasks): int32 {.inline.} =
+proc countEvents*(mask: EventMasks): int {.inline.} =
   ## Counts how many events of a specific type are in the queue
   ## without removing them.
-  result = SDL_PeepEvents(nil, 0, EventAction.peek, uint32(mask))
+  SDL_PeepEvents(nil, 0, EventAction.peek, uint32(mask))
 
-proc peekEvents*(events: var openArray[Event], mask: EventMasks = allEventsMask): int32 {.inline.} =
+proc peekEvents*(events: var openArray[Event], mask: EventMasks = allEventsMask): int {.inline.} =
   ## Copies events to the buffer but LEAVES them in SDL's queue.
   if events.len == 0: return 0
-  result = SDL_PeepEvents(addr events[0], cint(events.len), EventAction.peek, uint32(mask))
+  SDL_PeepEvents(addr events[0], cint(events.len), EventAction.peek, uint32(mask))
 
-proc getEvents*(events: var openArray[Event], mask: EventMasks = allEventsMask): int32 {.inline.} =
+proc events*(events: var openArray[Event], mask: EventMasks = allEventsMask): int {.inline.} =
   ## Extracts events, copying to buffer and REMOVING them from SDL's queue.
   if events.len == 0: return 0
-  result = SDL_PeepEvents(addr events[0], cint(events.len), EventAction.get, uint32(mask))
+  SDL_PeepEvents(addr events[0], cint(events.len), EventAction.get, uint32(mask))
 
-proc addEvents*(events: var openArray[Event], mask: EventMasks = allEventsMask): int32 {.inline.} =
+proc addEvents*(events: var openArray[Event], mask: EventMasks = allEventsMask): int {.inline.} =
   ## Injects multiple events at once into SDL's queue.
   if events.len == 0: return 0
-  result = SDL_PeepEvents(addr events[0], cint(events.len), EventAction.add, uint32(mask))
+  SDL_PeepEvents(addr events[0], cint(events.len), EventAction.add, uint32(mask))
 
 proc hasEvent*(mask: EventMasks): bool {.inline.} =
   ## Quick check if a specific event type is in the queue.
@@ -516,16 +517,24 @@ proc hasEvent*(mask: EventMasks): bool {.inline.} =
   ## ```
   result = (SDL_PeepEvents(nil, 0, EventAction.peek, uint32(mask)) > 0)
 
-proc setEventState*(kind: EventType, state: EventState): EventState {.inline.} =
+proc eventState*(kind: EventType, state: EventState): EventState {.inline.} =
   ## Enables or disables entire event types.
   ## Disabled events are not added to the queue.
   cast[EventState](SDL_EventState(uint8(kind), cint(state)))
 
-proc setEventFilter*(filter: EventFilter) {.inline.} =
+proc enableEvent*(kind: EventType) {.inline.} =
+  ## Enables a specific event type.
+  discard eventState(kind, EventState.enable)
+
+proc disableEvent*(kind: EventType) {.inline.} =
+  ## Disables a specific event type.
+  discard eventState(kind, EventState.disable)
+
+proc `eventFilter=`*(filter: EventFilter) {.inline.} =
   ## Sets a callback to filter events before they enter the queue.
   SDL_SetEventFilter(filter)
 
-proc getEventFilter*(): EventFilter {.inline.} =
+proc eventFilter*(): EventFilter {.inline.} =
   ## Returns the current event filter callback.
   SDL_GetEventFilter()
 
@@ -540,14 +549,14 @@ iterator pollEvents*(): Event =
   ##   else: discard
   ## ```
   var ev: Event
-  while SDL_PollEvent(addr ev) == 1:
+  while sdlTrue SDL_PollEvent(addr ev):
     yield ev
 
 iterator waitEvents*(): Event =
   ## Like pollEvents, but blocks the CPU until the first event arrives.
   ## Perfect for saving battery on Menu or Pause screens.
   var ev: Event
-  if SDL_WaitEvent(addr ev) == 1:
+  if sdlTrue SDL_WaitEvent(addr ev):
     yield ev
-    while SDL_PollEvent(addr ev) == 1:
+    while sdlTrue SDL_PollEvent(addr ev):
       yield ev
