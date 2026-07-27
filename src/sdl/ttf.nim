@@ -31,44 +31,41 @@
 ##   defer: quitTtf()
 ##
 ##   let screen = setVideoMode(640, 480, 32, sdlSwSurface)
-##
-##   # Load a font
-##   let font = loadFont("arial.ttf", 24)
-##   if font.isSome:
-##     var f = font.get
-##
-##     # Set font style
-##     f.style = {fontBold, fontItalic}
-##
-##     # Render text
-##     let text = f.renderBlended("Hello, SDL!", (255, 255, 255))
-##     if text.isSome:
-##       var textSurface = text.get
-##
-##       # Draw to screen
-##       discard textSurface.blit(screen, 100, 100)
-##
-##       # Get text size
-##       let (w, h) = f.calcSize("Test")
-##       echo "Text size: ", w, "x", h
+##   let font = loadFont("arial.ttf", 24).get()
+##   font.style = {fontBold, fontItalic}
 ##
 ##   var running = true
 ##   while running:
-##     for event in pollEvents():
-##       if event.kind == quit:
+##     for evt in pollEvents():
+##       if evt.kind == quit:
 ##         running = false
 ##
+##     let text = font.renderBlended("Hello, SDL!", Color(r: 255, g: 255, b: 255)).get()
+##     text.blit(screen, 100, 100)
+##     let (w, h) = font.calcSize("Test").get()
+##     echo "Text size: ", w, "x", h
 ##     screen.flip()
 ## ```
 ##
 ## ## Advantages over C SDL_ttf
 ##
-## | C SDL_ttf                     | Nim SDL                        |
-## |-------------------------------|--------------------------------|
-## | `TTF_Font *font` manual close | `Font` RAII auto-close         |
-## | `SDL_Surface *` manual free   | `Surface` RAII auto-free       |
-## | Manual color struct creation  | Tuple syntax: `(r, g, b)`      |
-## | Integer return codes          | `Option[T]` for error handling |
+## | C SDL_ttf                           | Nim SDL                                        |
+## |-------------------------------------|------------------------------------------------|
+## | `TTF_Font *font` manual close       | `Font` RAII auto-close                         |
+## | `SDL_Surface *` manual free         | `Surface` RAII auto-free                       |
+## | Manual color struct `SDL_Color`     | `Color(r, g, b)` object constructor            |
+## | Integer return codes                | `Option[T]` for error handling                 |
+## | `TTF_SizeUTF8()` discards failure   | `calcSize()` returns `Option[tuple]`           |
+## | `get`/`set` prefixes everywhere     | Nim-idiomatic property access                  |
+## | UTF-8 only via `TTF_RenderUTF8_*`   | `renderSolid`/`renderBlended` UTF-8 by default |
+## | Nullable font pointers              | `Option[Font]` with safe unwrap                |
+##
+## ## API Highlights
+##
+## - **RAII:** `Font` — auto-closed on scope exit, move-only
+## - **Type safety:** `FontStyles` set type, `FontHinting` enum
+## - **Zero-alloc:** `cstring` overloads for `loadFont`, `calcSize`, `renderSolid`, `renderBlended`, etc.
+## - **Safe errors:** All fallible procs return `Option[T]`; `calcSize` returns `Option[tuple]`
 ##
 ## ## Rendering Modes
 ##
@@ -88,6 +85,7 @@
 when defined(ttf):
   import std/options
   import private/macros
+  import private/utils
   import version
   import rwops
   import video
@@ -103,12 +101,6 @@ when defined(ttf):
     Font* = object
       ## RAII wrapper for a TrueType font. Closes the font on scope exit.
       raw*: RawFontPtr
-
-    SdlColor {.importc: "SDL_Color", header: "SDL.h".} = object
-      r*, g*, b*, unused*: uint8
-
-    Color* = tuple[r, g, b: int]
-      ## An RGB color for text rendering.
 
   proc `=copy`*(dest: var Font, source: Font) {.error: "Font cannot be copied! Use move() instead".}
 
@@ -163,25 +155,23 @@ when defined(ttf):
   proc TTF_FontFaces(font: RawFontPtr): cint {.importc.}
   proc TTF_SizeUTF8(font: RawFontPtr, text: cstring, w: ptr cint, h: ptr cint): cint {.importc.}
 
-  proc TTF_RenderUTF8_Solid(font: RawFontPtr, text: cstring, fg: SdlColor): RawSurfacePtr {.importc.}
-  proc TTF_RenderUTF8_Shaded(font: RawFontPtr, text: cstring, fg: SdlColor, bg: SdlColor): RawSurfacePtr {.importc.}
-  proc TTF_RenderUTF8_Blended(font: RawFontPtr, text: cstring, fg: SdlColor): RawSurfacePtr {.importc.}
+  proc TTF_RenderUTF8_Solid(font: RawFontPtr, text: cstring, fg: Color): RawSurfacePtr {.importc.}
+  proc TTF_RenderUTF8_Shaded(font: RawFontPtr, text: cstring, fg: Color, bg: Color): RawSurfacePtr {.importc.}
+  proc TTF_RenderUTF8_Blended(font: RawFontPtr, text: cstring, fg: Color): RawSurfacePtr {.importc.}
 
-  proc TTF_RenderText_Solid(font: RawFontPtr, text: cstring, fg: SdlColor): RawSurfacePtr {.importc.}
-  proc TTF_RenderText_Shaded(font: RawFontPtr, text: cstring, fg: SdlColor, bg: SdlColor): RawSurfacePtr {.importc.}
-  proc TTF_RenderText_Blended(font: RawFontPtr, text: cstring, fg: SdlColor): RawSurfacePtr {.importc.}
+  proc TTF_RenderText_Solid(font: RawFontPtr, text: cstring, fg: Color): RawSurfacePtr {.importc.}
+  proc TTF_RenderText_Shaded(font: RawFontPtr, text: cstring, fg: Color, bg: Color): RawSurfacePtr {.importc.}
+  proc TTF_RenderText_Blended(font: RawFontPtr, text: cstring, fg: Color): RawSurfacePtr {.importc.}
 
-  proc TTF_RenderUNICODE_Solid(font: RawFontPtr, text: ptr uint16, fg: SdlColor): RawSurfacePtr {.importc.}
-  proc TTF_RenderUNICODE_Shaded(font: RawFontPtr, text: ptr uint16, fg: SdlColor, bg: SdlColor): RawSurfacePtr {.importc.}
-  proc TTF_RenderUNICODE_Blended(font: RawFontPtr, text: ptr uint16, fg: SdlColor): RawSurfacePtr {.importc.}
+  proc TTF_RenderUNICODE_Solid(font: RawFontPtr, text: ptr uint16, fg: Color): RawSurfacePtr {.importc.}
+  proc TTF_RenderUNICODE_Shaded(font: RawFontPtr, text: ptr uint16, fg: Color, bg: Color): RawSurfacePtr {.importc.}
+  proc TTF_RenderUNICODE_Blended(font: RawFontPtr, text: ptr uint16, fg: Color): RawSurfacePtr {.importc.}
 
-  proc TTF_RenderGlyph_Solid(font: RawFontPtr, ch: uint16, fg: SdlColor): RawSurfacePtr {.importc.}
-  proc TTF_RenderGlyph_Shaded(font: RawFontPtr, ch: uint16, fg: SdlColor, bg: SdlColor): RawSurfacePtr {.importc.}
-  proc TTF_RenderGlyph_Blended(font: RawFontPtr, ch: uint16, fg: SdlColor): RawSurfacePtr {.importc.}
+  proc TTF_RenderGlyph_Solid(font: RawFontPtr, ch: uint16, fg: Color): RawSurfacePtr {.importc.}
+  proc TTF_RenderGlyph_Shaded(font: RawFontPtr, ch: uint16, fg: Color, bg: Color): RawSurfacePtr {.importc.}
+  proc TTF_RenderGlyph_Blended(font: RawFontPtr, ch: uint16, fg: Color): RawSurfacePtr {.importc.}
 
   {.pop.}
-
-  template toSdl(c: Color): SdlColor = SdlColor(r: uint8(c.r), g: uint8(c.g), b: uint8(c.b), unused: 0)
 
   proc initTtf*() {.inline.} =
     ## Initializes the SDL_ttf library. Must be called before using fonts.
@@ -198,33 +188,28 @@ when defined(ttf):
 
   proc ttfWasInit*(): bool {.inline.} =
     ## Returns `true` if the SDL_ttf library has been initialized.
-    TTF_WasInit() != 0
+    sdlNonZero TTF_WasInit()
 
-  proc byteSwappedUnicode*(swapped: bool) {.inline.} =
+  proc byteSwapUnicode*(swapped: bool) {.inline.} =
     ## Controls UNICODE byte swapping. Enable when reading big-endian UCS-2 data.
     TTF_ByteSwappedUNICODE(cint(swapped))
 
-  proc fontFaces*(font: Font): int {.inline.} =
+  proc numFaces*(font: Font): int {.inline.} =
     ## Returns the number of available font faces in the font file.
     int(TTF_FontFaces(font.raw))
 
-  proc loadFont*(file: string, size: int): Option[Font] {.inline.} =
-    ## Loads a TrueType font from a file.
-    ##
-    ## **Example:**
-    ## ```nim
-    ## let font = loadFont("arial.ttf", 24)
-    ## if font.isSome:
-    ##   var f = font.get
-    ##   echo "Font loaded: height=", f.height
-    ## ```
-    let raw = TTF_OpenFont(file.cstring, cint(size))
+  proc loadFont*(file: cstring, size: int): Option[Font] {.inline.} =
+    ## Loads a TrueType font from a file path (cstring, zero-alloc).
+    let raw = TTF_OpenFont(file, cint(size))
     if raw.isNil: none(Font) else: some(Font(raw: raw))
 
-  proc loadFont*(stream: var RWops, size: int): Option[Font] {.inline.} =
+  proc loadFont*(file: string, size: int): Option[Font] {.inline.} =
+    ## Loads a TrueType font from a file path (string, convenience overload).
+    loadFont(file.cstring, size)
+
+  proc loadFont*(stream: var RWops, size: int, freeStream: bool = false): Option[Font] {.inline.} =
     ## Loads a TrueType font from an RWops stream.
-    assert not stream.unsafeRaw().isNil
-    let raw = TTF_OpenFontRW(stream.unsafeRaw(), 0, cint(size))
+    let raw = TTF_OpenFontRW(stream.unsafeRaw(), cint(freeStream), cint(size))
     if raw.isNil: none(Font) else: some(Font(raw: raw))
 
   proc `style=`*(font: var Font, style: FontStyles) {.inline.} =
@@ -267,91 +252,142 @@ when defined(ttf):
     ## Returns the recommended line spacing in pixels.
     int(TTF_FontLineSkip(font.raw))
 
-  proc calcSize*(font: Font, text: string): tuple[width, height: int] {.inline.} =
+  proc calcSize*(font: Font, text: cstring): Option[tuple[width, height: int]] {.inline.} =
     ## Calculates the rendered dimensions of a text string without rendering it.
+    ## Returns `none` if the font cannot render the text (e.g., missing glyph).
     var w, h: cint
-    discard TTF_SizeUTF8(font.raw, text.cstring, addr w, addr h)
-    (int(w), int(h))
+    if sdlOk TTF_SizeUTF8(font.raw, text, addr w, addr h):
+      some((int(w), int(h)))
+    else:
+      none(tuple[width, height: int])
+
+  proc calcSize*(font: Font, text: string): Option[tuple[width, height: int]] {.inline.} =
+    calcSize(font, text.cstring)
+
+  proc renderSolid*(font: Font, text: cstring, color: Color): Option[Surface] {.inline.} =
+    ## Renders text in solid mode (fast, no anti-aliasing, 1-bit color).
+    let raw = TTF_RenderUTF8_Solid(font.raw, text, color)
+    if raw.isNil: none(Surface)
+    else: some(assumeRaw[Surface](raw))
 
   proc renderSolid*(font: Font, text: string, color: Color): Option[Surface] {.inline.} =
-    ## Renders text in solid mode (fast, no anti-aliasing, 1-bit color).
-    let raw = TTF_RenderUTF8_Solid(font.raw, text.cstring, color.toSdl)
+    renderSolid(font, text.cstring, color)
+
+  proc renderShaded*(font: Font, text: cstring, fgColor, bgColor: Color): Option[Surface] {.inline.} =
+    ## Renders text in shaded mode (medium quality, 2 colors with background).
+    let raw = TTF_RenderUTF8_Shaded(font.raw, text, fgColor, bgColor)
     if raw.isNil: none(Surface)
     else: some(assumeRaw[Surface](raw))
 
   proc renderShaded*(font: Font, text: string, fgColor, bgColor: Color): Option[Surface] {.inline.} =
-    ## Renders text in shaded mode (medium quality, 2 colors with background).
-    let raw = TTF_RenderUTF8_Shaded(font.raw, text.cstring, fgColor.toSdl, bgColor.toSdl)
-    if raw.isNil: none(Surface)
-    else: some(assumeRaw[Surface](raw))
+    renderShaded(font, text.cstring, fgColor, bgColor)
 
-  proc renderBlended*(font: Font, text: string, color: Color): Option[Surface] {.inline.} =
+  proc renderBlended*(font: Font, text: cstring, color: Color): Option[Surface] {.inline.} =
     ## Renders UTF-8 text with high-quality anti-aliasing and alpha blending.
     ##
     ## **Example:**
     ## ```nim
-    ## let text = font.renderBlended("Hello!", (255, 255, 255))
+    ## let text = font.renderBlended("Hello!", Color(r: 255, g: 255, b: 255))
     ## if text.isSome:
     ##   discard text.get.blit(screen, 100, 100)
     ## ```
     ##
     ## **Note:** This is the recommended rendering mode for most applications.
-    let raw = TTF_RenderUTF8_Blended(font.raw, text.cstring, color.toSdl)
+    let raw = TTF_RenderUTF8_Blended(font.raw, text, color)
+    if raw.isNil: none(Surface)
+    else: some(assumeRaw[Surface](raw))
+
+  proc renderBlended*(font: Font, text: string, color: Color): Option[Surface] {.inline.} =
+    renderBlended(font, text.cstring, color)
+
+  proc renderTextSolid*(font: Font, text: cstring, color: Color): Option[Surface] {.inline.} =
+    ## Renders Latin-1 text in solid mode (fast, 1-bit color, no anti-aliasing).
+    ##
+    ## **Note:** For Unicode text, use `renderSolid()` or `renderBlended()` (UTF-8).
+    let raw = TTF_RenderText_Solid(font.raw, text, color)
     if raw.isNil: none(Surface)
     else: some(assumeRaw[Surface](raw))
 
   proc renderTextSolid*(font: Font, text: string, color: Color): Option[Surface] {.inline.} =
-    ## Renders Latin-1 text in solid mode (fast, 1-bit color, no anti-aliasing).
-    ##
-    ## **Note:** For Unicode text, use `renderSolid()` or `renderBlended()` (UTF-8).
-    let raw = TTF_RenderText_Solid(font.raw, text.cstring, color.toSdl)
+    renderTextSolid(font, text.cstring, color)
+
+  proc renderTextShaded*(font: Font, text: cstring, fgColor, bgColor: Color): Option[Surface] {.inline.} =
+    ## Renders Latin-1 text in shaded mode (2 colors with background).
+    let raw = TTF_RenderText_Shaded(font.raw, text, fgColor, bgColor)
     if raw.isNil: none(Surface)
     else: some(assumeRaw[Surface](raw))
 
   proc renderTextShaded*(font: Font, text: string, fgColor, bgColor: Color): Option[Surface] {.inline.} =
-    ## Renders Latin-1 text in shaded mode (2 colors with background).
-    let raw = TTF_RenderText_Shaded(font.raw, text.cstring, fgColor.toSdl, bgColor.toSdl)
+    renderTextShaded(font, text.cstring, fgColor, bgColor)
+
+  proc renderTextBlended*(font: Font, text: cstring, color: Color): Option[Surface] {.inline.} =
+    ## Renders Latin-1 text with anti-aliased alpha blending.
+    let raw = TTF_RenderText_Blended(font.raw, text, color)
     if raw.isNil: none(Surface)
     else: some(assumeRaw[Surface](raw))
 
   proc renderTextBlended*(font: Font, text: string, color: Color): Option[Surface] {.inline.} =
-    ## Renders Latin-1 text with anti-aliased alpha blending.
-    let raw = TTF_RenderText_Blended(font.raw, text.cstring, color.toSdl)
-    if raw.isNil: none(Surface)
-    else: some(assumeRaw[Surface](raw))
+    renderTextBlended(font, text.cstring, color)
 
   proc renderUnicodeSolid*(font: Font, text: openArray[uint16], color: Color): Option[Surface] {.inline.} =
-    ## Renders UCS-2 text in solid mode. The text must be null-terminated.
-    let raw = TTF_RenderUNICODE_Solid(font.raw, cast[ptr uint16](unsafeAddr text[0]), color.toSdl)
+    ## Renders UCS-2 text in solid mode (fast, 1-bit color, no anti-aliasing).
+    ##
+    ## The `text` must be null-terminated (trailing `0'u16`). Use `renderSolid()`
+    ## or `renderBlended()` for UTF-8 strings unless you already have UCS-2 data.
+    ##
+    ## **Note:** Empty arrays return `none(Surface)` safely.
+    let raw = if text.len > 0:
+      TTF_RenderUNICODE_Solid(font.raw, unsafeAddr text[0], color)
+    else:
+      RawSurfacePtr(nil)
     if raw.isNil: none(Surface)
     else: some(assumeRaw[Surface](raw))
 
   proc renderUnicodeShaded*(font: Font, text: openArray[uint16], fgColor, bgColor: Color): Option[Surface] {.inline.} =
-    ## Renders UCS-2 text in shaded mode.
-    let raw = TTF_RenderUNICODE_Shaded(font.raw, cast[ptr uint16](unsafeAddr text[0]), fgColor.toSdl, bgColor.toSdl)
+    ## Renders UCS-2 text in shaded mode (2 colors with background).
+    ##
+    ## The `text` must be null-terminated (trailing `0'u16`). For UTF-8 strings,
+    ## use `renderShaded()` instead.
+    ##
+    ## **Note:** Empty arrays return `none(Surface)` safely.
+    let raw = if text.len > 0:
+      TTF_RenderUNICODE_Shaded(font.raw, unsafeAddr text[0], fgColor, bgColor)
+    else:
+      RawSurfacePtr(nil)
     if raw.isNil: none(Surface)
     else: some(assumeRaw[Surface](raw))
 
   proc renderUnicodeBlended*(font: Font, text: openArray[uint16], color: Color): Option[Surface] {.inline.} =
-    ## Renders UCS-2 text with anti-aliased alpha blending.
-    let raw = TTF_RenderUNICODE_Blended(font.raw, cast[ptr uint16](unsafeAddr text[0]), color.toSdl)
+    ## Renders UCS-2 text with high-quality anti-aliasing and alpha blending.
+    ##
+    ## The `text` must be null-terminated (trailing `0'u16`). For most applications,
+    ## use `renderBlended()` (UTF-8) instead — it is simpler and covers Unicode text.
+    ##
+    ## **Note:** Empty arrays return `none(Surface)` safely.
+    let raw = if text.len > 0:
+      TTF_RenderUNICODE_Blended(font.raw, unsafeAddr text[0], color)
+    else:
+      RawSurfacePtr(nil)
     if raw.isNil: none(Surface)
     else: some(assumeRaw[Surface](raw))
 
   proc renderGlyphSolid*(font: Font, ch: uint16, color: Color): Option[Surface] {.inline.} =
-    ## Renders a single 16-bit glyph in solid mode.
-    let raw = TTF_RenderGlyph_Solid(font.raw, ch, color.toSdl)
+    ## Renders a single 16-bit glyph (character) in solid mode.
+    ##
+    ## Useful for rendering individual characters when you already have the
+    ## glyph index. For full strings, use `renderSolid()` (UTF-8).
+    let raw = TTF_RenderGlyph_Solid(font.raw, ch, color)
     if raw.isNil: none(Surface)
     else: some(assumeRaw[Surface](raw))
 
   proc renderGlyphShaded*(font: Font, ch: uint16, fgColor, bgColor: Color): Option[Surface] {.inline.} =
-    ## Renders a single 16-bit glyph in shaded mode.
-    let raw = TTF_RenderGlyph_Shaded(font.raw, ch, fgColor.toSdl, bgColor.toSdl)
+    ## Renders a single 16-bit glyph (character) in shaded mode.
+    let raw = TTF_RenderGlyph_Shaded(font.raw, ch, fgColor, bgColor)
     if raw.isNil: none(Surface)
     else: some(assumeRaw[Surface](raw))
 
   proc renderGlyphBlended*(font: Font, ch: uint16, color: Color): Option[Surface] {.inline.} =
-    ## Renders a single 16-bit glyph with anti-aliased alpha blending.
-    let raw = TTF_RenderGlyph_Blended(font.raw, ch, color.toSdl)
+    ## Renders a single 16-bit glyph (character) with anti-aliased alpha blending.
+    let raw = TTF_RenderGlyph_Blended(font.raw, ch, color)
     if raw.isNil: none(Surface)
     else: some(assumeRaw[Surface](raw))
