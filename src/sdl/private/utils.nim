@@ -133,11 +133,11 @@ template toOption*[P, W](ptrExpr: P, WrapperType: typedesc[W]): Option[W] =
   ## ```nim
   ## let surface = SDL_CreateSurface(...).toOption(Surface)
   ## ```
-  let ptrAvaliado = ptrExpr
-  if ptrAvaliado.isNil:
+  let evaluatedPtr = ptrExpr
+  if evaluatedPtr.isNil:
     none(WrapperType)
   else:
-    some(WrapperType(raw: ptrAvaliado))
+    some(WrapperType(raw: evaluatedPtr))
 
 template cBuf*(buf: array): cstring =
   ## Returns the array's starting pointer as `cstring`.

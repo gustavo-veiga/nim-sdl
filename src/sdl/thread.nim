@@ -181,7 +181,7 @@ proc wait*(t: var Thread): int32 {.inline.} =
   ## let exitCode = thread.wait()
   ## echo "Thread exited with code: ", exitCode
   ## ```
-  assert t.raw != nil, "A thread já foi sincronizada ou destruída!"
+  assert t.raw != nil, "Thread has already been joined or destroyed!"
   var status: cint
   SDL_WaitThread(t.raw, addr status)
   t.raw = nil

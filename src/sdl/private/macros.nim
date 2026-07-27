@@ -64,11 +64,11 @@ macro sdlCheck*(call: untyped): untyped =
 
     when compiles(res == nil):
       if res == nil:
-        echo "[SDL PANIC] Falha ao executar: ", `callStr`, sdlErrMsg()
+        echo "[SDL PANIC] Failed to execute: ", `callStr`, sdlErrMsg()
         quit(1)
     elif compiles(res < 0):
       if res < 0:
-        echo "[SDL PANIC] Falha ao executar: ", `callStr`, sdlErrMsg()
+        echo "[SDL PANIC] Failed to execute: ", `callStr`, sdlErrMsg()
         quit(1)
     res
 
@@ -86,10 +86,10 @@ macro sdlCheckZero*(call: untyped): untyped =
       when compiles(SDL_GetError()):
         let err = $SDL_GetError()
         if err.len > 0:
-          echo "[SDL PANIC] Falha ao executar: ", `callStr`, ": ", err
+          echo "[SDL PANIC] Failed to execute: ", `callStr`, ": ", err
         else:
-          echo "[SDL PANIC] Falha ao executar: ", `callStr`
+          echo "[SDL PANIC] Failed to execute: ", `callStr`
       else:
-        echo "[SDL PANIC] Falha ao executar: ", `callStr`
+        echo "[SDL PANIC] Failed to execute: ", `callStr`
       quit(1)
     res
