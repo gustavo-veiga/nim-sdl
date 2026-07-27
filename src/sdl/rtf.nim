@@ -84,7 +84,7 @@
 ## - `sdl/ttf` - TrueType font rendering
 ## - `sdl/video` - Surface management
 
-when defined(rtf):
+when defined(rtf) or defined(nimdoc):
   import std/options
   import rwops
   import video
@@ -249,3 +249,5 @@ when defined(rtf):
     ## ```
     var cRect = Rect(x: int16(rect.x), y: int16(rect.y), width: uint16(rect.w), height: uint16(rect.h))
     RTF_Render(ctx.raw, dest.unsafeRaw, addr cRect, cint(yOffset))
+else:
+  {.fatal: "sdl/rtf requires -d:rtf compile flag (SDL_rtf library)".}

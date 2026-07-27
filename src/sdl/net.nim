@@ -81,7 +81,7 @@
 ##
 ## - `sdl/core` - SDL initialization
 
-when defined(net):
+when defined(net) or defined(nimdoc):
   import std/options
   import private/utils
   import version
@@ -636,3 +636,5 @@ when defined(net):
   proc read32*(area: pointer): uint32 {.inline.} =
     ## Reads a 32-bit value in network byte order from memory.
     SDLNet_Read32(area)
+else:
+  {.fatal: "sdl/net requires -d:net compile flag (SDL_net library)".}

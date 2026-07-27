@@ -190,3 +190,5 @@ when defined(dreamcast) or defined(nimdoc):
     ## Returns audio control to SDL's default audio handling.
     ## Call this after using a custom sound buffer.
     SDL_DC_RestoreSoundBuffer()
+else:
+  {.fatal: "sdl/dreamcast requires -d:dreamcast compile flag".}

@@ -82,7 +82,7 @@
 ## - `sdl/ttf` - TrueType font rendering (simpler alternative)
 ## - `sdl/video` - Surface management
 
-when defined(pango):
+when defined(pango) or defined(nimdoc):
   import std/options
   import video
 
@@ -269,3 +269,5 @@ when defined(pango):
     ## ctx.drawTo(screen, 100, 100)
     ## ```
     SDLPango_Draw(ctx.raw, unsafeRaw(dest), cint(x), cint(y))
+else:
+  {.fatal: "sdl/pango requires -d:pango compile flag (SDL_pango library)".}

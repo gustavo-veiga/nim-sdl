@@ -72,7 +72,7 @@
 ## - `sdl/timer` - Lower-level timing functions
 ## - `sdl/video` - Video subsystem for rendering
 
-when defined(gfx):
+when defined(gfx) or defined(nimdoc):
   # =========================================================
   # 1. CONSTANTS AND STRUCTURE (Stack-allocated)
   # =========================================================
@@ -150,3 +150,5 @@ when defined(gfx):
     ## discard fps.delay()  # Maintain frame rate
     ## ```
     int(SDL_framerateDelay(addr manager))
+else:
+  {.fatal: "sdl/framerate requires -d:gfx compile flag (SDL_gfx library)".}

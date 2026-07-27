@@ -82,7 +82,7 @@
 ## - `sdl/image` - Image loading
 ## - `sdl/video` - Surface management
 
-when defined(ttf):
+when defined(ttf) or defined(nimdoc):
   import std/options
   import private/macros
   import private/utils
@@ -391,3 +391,5 @@ when defined(ttf):
     let raw = TTF_RenderGlyph_Blended(font.raw, ch, color)
     if raw.isNil: none(Surface)
     else: some(assumeRaw[Surface](raw))
+else:
+  {.fatal: "sdl/ttf requires -d:ttf compile flag (SDL_ttf library)".}

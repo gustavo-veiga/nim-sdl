@@ -55,7 +55,7 @@
 ## - `sdl/gfxprimitives` - Drawing primitives
 ## - `sdl/rotozoom` - Surface rotation and scaling
 
-when defined(gfx):
+when defined(gfx) or defined(nimdoc):
   import private/utils
 
   {.push header: "SDL_imageFilter.h", importc, cdecl.}
@@ -413,3 +413,5 @@ when defined(gfx):
     ## **Note:** Use `rightShift` to control output intensity
     ## (higher shift = darker edges).
     imgOp(SDL_imageFilterSobelXShiftRight, src, dest, rows, columns, rightShift)
+else:
+  {.fatal: "sdl/gfxfilter requires -d:gfx compile flag (SDL_gfx library)".}

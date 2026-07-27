@@ -74,7 +74,7 @@
 ## - `sdl/video` - Surface type and rendering functions
 ## - `sdl/rwops` - Custom data streams for loading
 
-when defined(image):
+when defined(image) or defined(nimdoc):
   import std/options
   import private/macros
   import version
@@ -318,3 +318,5 @@ when defined(image):
     let raw = IMG_ReadXPMFromArray(cast[ptr cstring](data[0].unsafeAddr))
     if raw.isNil: none(Surface)
     else: some(assumeRaw[Surface](raw))
+else:
+  {.fatal: "sdl/image requires -d:image compile flag (SDL_image library)".}

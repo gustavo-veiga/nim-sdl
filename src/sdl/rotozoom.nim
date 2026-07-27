@@ -95,7 +95,7 @@
 ## - `sdl/video` - Surface management
 ## - `sdl/framerate` - Frame rate control
 
-when defined(gfx):
+when defined(gfx) or defined(nimdoc):
   import std/options
   import video
 
@@ -222,3 +222,5 @@ when defined(gfx):
     var w, h: cint
     zoomSurfaceSize(cint(width), cint(height), cdouble(zoomX), cdouble(zoomY), addr w, addr h)
     (int(w), int(h))
+else:
+  {.fatal: "sdl/rotozoom requires -d:gfx compile flag (SDL_gfx library)".}

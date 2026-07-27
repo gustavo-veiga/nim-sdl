@@ -70,7 +70,7 @@
 ## - `sdl/audio` - Core SDL audio subsystem
 ## - `sdl/rwops` - File I/O abstraction
 
-when defined(mixer):
+when defined(mixer) or defined(nimdoc):
   import audio
   import rwops
   import version
@@ -816,3 +816,5 @@ when defined(mixer):
       inc i
     if all[start] != '\0':
       yield cast[cstring](addr all[start])
+else:
+  {.fatal: "sdl/mixer requires -d:mixer compile flag (SDL_mixer library)".}

@@ -95,7 +95,7 @@
 ## - `sdl/gfxfilter` — MMX-accelerated image filters
 ## - `sdl/ttf` — TrueType font rendering (alternative to bitmap text)
 
-when defined(gfx):
+when defined(gfx) or defined(nimdoc):
   import private/utils
   import video
 
@@ -845,3 +845,5 @@ when defined(gfx):
     ): bool {.inline.} =
     ## Component overload of `string`.
     sdlOk stringRGBA(surface.raw, int16(x), int16(y), cstring(s), r, g, b, a)
+else:
+  {.fatal: "sdl/gfxprimitives requires -d:gfx compile flag (SDL_gfx library)".}
