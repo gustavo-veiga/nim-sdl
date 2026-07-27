@@ -83,12 +83,12 @@ runMain:
 
   var running = true
   while running:
-    for evt in pollEvents():
-      case evt.kind
+    for event in pollEvents():
+      case event.kind
       of EventType.quit:
         running = false
       of EventType.keyDown:
-        if evt.key.keyInfo.key == Key.escape:
+        if event.key.keyInfo.key == Key.escape:
           running = false
       else: discard
 

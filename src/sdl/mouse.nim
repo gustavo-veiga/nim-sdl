@@ -46,8 +46,8 @@
 ## 
 ##   var running = true
 ##   while running:
-##     for evt in pollEvents():
-##       if evt.kind == quit:
+##     for event in pollEvents():
+##       if event.kind == quit:
 ##         running = false
 ## 
 ##     let mouse = mouseState()
