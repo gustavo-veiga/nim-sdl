@@ -19,7 +19,7 @@ A modern, memory-safe Nim wrapper for **SDL 1.2** — designed for retro hardwar
 | Error strings via `SDL_GetError()`       | `setError` / `getError` / `clearError` + `Result[T]` helpers                      |
 | Thread/mutex/semaphore: opaque C handles | `Thread`, `Mutex`, `Semaphore`, `Condition` with `=destroy` + `withLock` template |
 | No type safety for flags                 | `distinct` bitmask types (`InitFlag`, `AudioFormat`, `KeyMods`, …) with operators |
-| Callback hell for audio conversion       | `AudioCVT` with `initAudioSpec(freq, ch, samples, fmt)` — no callback required    |
+| Callback hell for audio conversion       | `AudioConverter` with `createAudioConverter(src, dst)` — no callback required    |
 | Global state, no scoping                 | `let ctx = sdlInit(flags)` / `defer: ctx.quit()`                                  |
 | Header-only, no build system             | Single `import sdl` — `nimble` handles `-lSDL` + companion libs                   |
 | Write directly in C                      | Write in **Nim**, ship **C99 source** — compiles with any C99 compiler, no Nim needed |
@@ -195,8 +195,8 @@ let srcSpec = initAudioSpec(44100, 2, 4096, audioS16Sys)
 # Destination: 22.05 kHz mono U8
 let dstSpec = initAudioSpec(22050, 1, 2048, AudioFormat.u8)
 
-var cvt = buildAudioCVT(srcSpec, dstSpec)
-# cvt.len, cvt.buf, cvt.ratio ready — just feed data and call convertAudio(cvt)
+var converter = createAudioConverter(srcSpec, dstSpec).get
+# converter.originalLength, converter.buffer, converter.conversionRatio ready — just feed data and call converter.convertAudio()
 ```
 
 No callback required. `initAudioSpec(freq, channels, samples, format)` gives you a valid `AudioSpec` instantly.
