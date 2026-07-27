@@ -78,18 +78,12 @@ runMain:
   let guard = sdlInit()
   defer: guard.quit()
 
-  let screenOpt = setVideoMode(640, 480, ColorDepth.bpp16)
-  if screenOpt.isNone:
-    quit("Failed to set video mode")
-
-  var screen = screenOpt.get()
+  let screen = setVideoMode(640, 480, ColorDepth.bpp16).get()
   setCaption("Hello SDL from Nim!")
 
   var running = true
-  var evt: Event
-
   while running:
-    while pollEvent(evt):
+    for evt in pollEvents():
       case evt.kind
       of EventType.quit:
         running = false
