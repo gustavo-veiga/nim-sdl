@@ -790,7 +790,7 @@ when defined(mixer) or defined(nimdoc):
 
   proc `soundFonts=`*(paths: string): bool {.inline.} =
     ## `string` overload of `soundFonts=`. Converts to `cstring` internally.
-    soundFonts = paths.cstring
+    `soundFonts=`(paths.cstring)
 
   proc soundFonts*(): cstring {.inline.} =
     ## Returns the current SoundFont search paths.
@@ -806,15 +806,15 @@ when defined(mixer) or defined(nimdoc):
     ##   echo sf
     ## ```
     let all = Mix_GetSoundFonts()
-    if all.isNil: return
     var i = 0
     var start = 0
-    while all[i] != '\0':
-      if all[i] == ':':
+    if not all.isNil:
+      while all[i] != '\0':
+        if all[i] == ':':
+          yield cast[cstring](addr all[start])
+          start = i + 1
+        inc i
+      if all[start] != '\0':
         yield cast[cstring](addr all[start])
-        start = i + 1
-      inc i
-    if all[start] != '\0':
-      yield cast[cstring](addr all[start])
 else:
   {.fatal: "sdl/mixer requires -d:mixer compile flag (SDL_mixer library)".}

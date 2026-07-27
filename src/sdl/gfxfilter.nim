@@ -104,32 +104,6 @@ when defined(gfx) or defined(nimdoc):
 
   {.pop.}
 
-  # --- Internal helper templates ---
-
-  template sdlOp(fn: untyped; src, dest: var openArray[uint8]): bool =
-    let bufLen = min(src.len, dest.len); if bufLen == 0: return false
-    sdlOk fn(addr src[0], addr dest[0], cuint(bufLen))
-
-  template sdlOp(fn: untyped; src, dest: var openArray[uint8]; args: varargs[untyped]): bool =
-    let bufLen = min(src.len, dest.len); if bufLen == 0: return false
-    sdlOk fn(addr src[0], addr dest[0], cuint(bufLen), args)
-
-  template sdlOp2(fn: untyped; src1, src2, dest: var openArray[uint8]): bool =
-    let bufLen = min(min(src1.len, src2.len), dest.len); if bufLen == 0: return false
-    sdlOk fn(addr src1[0], addr src2[0], addr dest[0], cuint(bufLen))
-
-  template imgOp(fn: untyped; src, dest: var openArray[uint8]; rows, columns: int; args: varargs[untyped]): bool =
-    sdlOk fn(addr src[0], addr dest[0], cint(rows), cint(columns), args)
-
-  template convCall(
-      fn: untyped;
-      src, dest: var openArray[uint8];
-      rows, columns: int;
-      kernel: openArray[int16];
-      lastArg: uint8
-    ): bool =
-    imgOp(fn, src, dest, rows, columns, cast[ptr int16](addr kernel[0]), lastArg)
-
   # --- MMX control ---
 
   proc mmxFilterDetect*(): bool {.inline.} =
@@ -153,133 +127,183 @@ when defined(gfx) or defined(nimdoc):
   proc filterAdd*(src1, src2, dest: var openArray[uint8]): bool {.inline.} =
     ## Element-wise addition of two byte buffers with saturation.
     ## **Formula:** `D = saturation255(S1 + S2)`.
-    sdlOp2(SDL_imageFilterAdd, src1, src2, dest)
+    let bufLen = min(min(src1.len, src2.len), dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterAdd(addr src1[0], addr src2[0], addr dest[0], cuint(bufLen))
 
   proc filterMean*(src1, src2, dest: var openArray[uint8]): bool {.inline.} =
     ## Element-wise average of two buffers.
     ## **Formula:** `D = S1/2 + S2/2`.
-    sdlOp2(SDL_imageFilterMean, src1, src2, dest)
+    let bufLen = min(min(src1.len, src2.len), dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterMean(addr src1[0], addr src2[0], addr dest[0], cuint(bufLen))
 
   proc filterSub*(src1, src2, dest: var openArray[uint8]): bool {.inline.} =
     ## Element-wise subtraction with floor at zero.
     ## **Formula:** `D = saturation0(S1 - S2)`.
-    sdlOp2(SDL_imageFilterSub, src1, src2, dest)
+    let bufLen = min(min(src1.len, src2.len), dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterSub(addr src1[0], addr src2[0], addr dest[0], cuint(bufLen))
 
   proc filterAbsDiff*(src1, src2, dest: var openArray[uint8]): bool {.inline.} =
     ## Element-wise absolute difference.
     ## **Formula:** `D = |S1 — S2|`.
-    sdlOp2(SDL_imageFilterAbsDiff, src1, src2, dest)
+    let bufLen = min(min(src1.len, src2.len), dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterAbsDiff(addr src1[0], addr src2[0], addr dest[0], cuint(bufLen))
 
   proc filterMult*(src1, src2, dest: var openArray[uint8]): bool {.inline.} =
     ## Element-wise multiplication with saturation.
     ## **Formula:** `D = saturation255(S1 * S2)`.
-    sdlOp2(SDL_imageFilterMult, src1, src2, dest)
+    let bufLen = min(min(src1.len, src2.len), dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterMult(addr src1[0], addr src2[0], addr dest[0], cuint(bufLen))
 
   proc filterMultNor*(src1, src2, dest: var openArray[uint8]): bool {.inline.} =
     ## Element-wise multiplication without saturation (non-MMX, non-accelerated).
     ## **Formula:** `D = S1 * S2`.
-    sdlOp2(SDL_imageFilterMultNor, src1, src2, dest)
+    let bufLen = min(min(src1.len, src2.len), dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterMultNor(addr src1[0], addr src2[0], addr dest[0], cuint(bufLen))
 
   proc filterMultDiv2*(src1, src2, dest: var openArray[uint8]): bool {.inline.} =
     ## Element-wise multiply with divide-by-2 pre-scaling.
     ## **Formula:** `D = saturation255(S1/2 * S2)`.
-    sdlOp2(SDL_imageFilterMultDivby2, src1, src2, dest)
+    let bufLen = min(min(src1.len, src2.len), dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterMultDivby2(addr src1[0], addr src2[0], addr dest[0], cuint(bufLen))
 
   proc filterMultDiv4*(src1, src2, dest: var openArray[uint8]): bool {.inline.} =
     ## Element-wise multiply with divide-by-4 pre-scaling.
     ## **Formula:** `D = saturation255(S1/2 * S2/2)`.
-    sdlOp2(SDL_imageFilterMultDivby4, src1, src2, dest)
+    let bufLen = min(min(src1.len, src2.len), dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterMultDivby4(addr src1[0], addr src2[0], addr dest[0], cuint(bufLen))
 
   proc filterBitAnd*(src1, src2, dest: var openArray[uint8]): bool {.inline.} =
     ## Element-wise bitwise AND.
     ## **Formula:** `D = S1 & S2`.
-    sdlOp2(SDL_imageFilterBitAnd, src1, src2, dest)
+    let bufLen = min(min(src1.len, src2.len), dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterBitAnd(addr src1[0], addr src2[0], addr dest[0], cuint(bufLen))
 
   proc filterBitOr*(src1, src2, dest: var openArray[uint8]): bool {.inline.} =
     ## Element-wise bitwise OR.
     ## **Formula:** `D = S1 | S2`.
-    sdlOp2(SDL_imageFilterBitOr, src1, src2, dest)
+    let bufLen = min(min(src1.len, src2.len), dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterBitOr(addr src1[0], addr src2[0], addr dest[0], cuint(bufLen))
 
   proc filterDiv*(src1, src2, dest: var openArray[uint8]): bool {.inline.} =
     ## Element-wise integer division (non-MMX, non-accelerated).
     ## **Formula:** `D = S1 / S2`.
-    sdlOp2(SDL_imageFilterDiv, src1, src2, dest)
+    let bufLen = min(min(src1.len, src2.len), dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterDiv(addr src1[0], addr src2[0], addr dest[0], cuint(bufLen))
 
   proc filterBitNegation*(src, dest: var openArray[uint8]): bool {.inline.} =
     ## Element-wise bitwise NOT.
     ## **Formula:** `D = ~S`.
-    sdlOp(SDL_imageFilterBitNegation, src, dest)
+    let bufLen = min(src.len, dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterBitNegation(addr src[0], addr dest[0], cuint(bufLen))
 
   # --- Scalar operations (S op C) ---
 
   proc filterAddByte*(src, dest: var openArray[uint8]; value: uint8): bool {.inline.} =
     ## Adds a constant byte to all elements with saturation.
     ## **Formula:** `D = saturation255(S + C)`.
-    sdlOp(SDL_imageFilterAddByte, src, dest, value)
+    let bufLen = min(src.len, dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterAddByte(addr src[0], addr dest[0], cuint(bufLen), value)
 
   proc filterAddUint*(src, dest: var openArray[uint8]; value: uint32): bool {.inline.} =
     ## Adds a constant 32-bit value re-interpreted as four bytes.
     ## **Formula:** `D = saturation255(S + C)`.
-    sdlOp(SDL_imageFilterAddUint, src, dest, value)
+    let bufLen = min(src.len, dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterAddUint(addr src[0], addr dest[0], cuint(bufLen), value)
 
   proc filterAddByteToHalf*(src, dest: var openArray[uint8]; value: uint8): bool {.inline.} =
     ## Adds a constant to half of each element with saturation.
     ## **Formula:** `D = saturation255(S/2 + C)`.
-    sdlOp(SDL_imageFilterAddByteToHalf, src, dest, value)
+    let bufLen = min(src.len, dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterAddByteToHalf(addr src[0], addr dest[0], cuint(bufLen), value)
 
   proc filterSubByte*(src, dest: var openArray[uint8]; value: uint8): bool {.inline.} =
     ## Subtracts a constant byte from all elements with floor at zero.
     ## **Formula:** `D = saturation0(S — C)`.
-    sdlOp(SDL_imageFilterSubByte, src, dest, value)
+    let bufLen = min(src.len, dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterSubByte(addr src[0], addr dest[0], cuint(bufLen), value)
 
   proc filterSubUint*(src, dest: var openArray[uint8]; value: uint32): bool {.inline.} =
     ## Subtracts a constant 32-bit value re-interpreted as four bytes.
     ## **Formula:** `D = saturation0(S — C)`.
-    sdlOp(SDL_imageFilterSubUint, src, dest, value)
+    let bufLen = min(src.len, dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterSubUint(addr src[0], addr dest[0], cuint(bufLen), value)
 
   # --- Bit shifts ---
 
   proc filterShiftRight*(src, dest: var openArray[uint8]; bits: uint8): bool {.inline.} =
     ## Right shift with saturation (floor at zero).
     ## **Formula:** `D = saturation0(S >> N)`.
-    sdlOp(SDL_imageFilterShiftRight, src, dest, bits)
+    let bufLen = min(src.len, dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterShiftRight(addr src[0], addr dest[0], cuint(bufLen), bits)
 
   proc filterShiftRightUint*(src, dest: var openArray[uint8]; bits: uint8): bool {.inline.} =
     ## Right shift treating bytes as a 32-bit word.
     ## **Formula:** `D = saturation0((uint32)S >> N)`.
-    sdlOp(SDL_imageFilterShiftRightUint, src, dest, bits)
+    let bufLen = min(src.len, dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterShiftRightUint(addr src[0], addr dest[0], cuint(bufLen), bits)
 
   proc filterShiftLeft*(src, dest: var openArray[uint8]; bits: uint8): bool {.inline.} =
     ## Left shift with saturation (cap at 255).
     ## **Formula:** `D = saturation255(S << N)`.
-    sdlOp(SDL_imageFilterShiftLeft, src, dest, bits)
+    let bufLen = min(src.len, dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterShiftLeft(addr src[0], addr dest[0], cuint(bufLen), bits)
 
   proc filterMultByByte*(src, dest: var openArray[uint8]; value: uint8): bool {.inline.} =
     ## Multiplies all elements by a constant byte with saturation.
     ## **Formula:** `D = saturation255(S * C)`.
-    sdlOp(SDL_imageFilterMultByByte, src, dest, value)
+    let bufLen = min(src.len, dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterMultByByte(addr src[0], addr dest[0], cuint(bufLen), value)
 
   proc filterShiftRightAndMultByByte*(src, dest: var openArray[uint8]; shift, multiplier: uint8): bool {.inline.} =
     ## Right shift then multiply by constant.
     ## **Formula:** `D = saturation255((S >> N) * C)`.
-    sdlOp(SDL_imageFilterShiftRightAndMultByByte, src, dest, shift, multiplier)
+    let bufLen = min(src.len, dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterShiftRightAndMultByByte(addr src[0], addr dest[0], cuint(bufLen), shift, multiplier)
 
   proc filterShiftLeftByte*(src, dest: var openArray[uint8]; bits: uint8): bool {.inline.} =
     ## Left shift (byte-level, same as `filterShiftLeft`).
     ## **Formula:** `D = saturation255(S << N)`.
-    sdlOp(SDL_imageFilterShiftLeftByte, src, dest, bits)
+    let bufLen = min(src.len, dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterShiftLeftByte(addr src[0], addr dest[0], cuint(bufLen), bits)
 
   proc filterShiftLeftUint*(src, dest: var openArray[uint8]; bits: uint8): bool {.inline.} =
     ## Left shift treating bytes as a 32-bit word.
     ## **Formula:** `D = saturation255((uint32)S << N)`.
-    sdlOp(SDL_imageFilterShiftLeftUint, src, dest, bits)
+    let bufLen = min(src.len, dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterShiftLeftUint(addr src[0], addr dest[0], cuint(bufLen), bits)
 
   # --- Threshold / Normalization ---
 
   proc filterBinarize*(src, dest: var openArray[uint8]; threshold: uint8): bool {.inline.} =
     ## Binarizes the buffer at a given threshold.
     ## **Formula:** `D = S >= T ? 255 : 0`.
-    sdlOp(SDL_imageFilterBinarizeUsingThreshold, src, dest, threshold)
+    let bufLen = min(src.len, dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterBinarizeUsingThreshold(addr src[0], addr dest[0], cuint(bufLen), threshold)
 
   proc filterClipToRange*(
       src, dest: var openArray[uint8];
@@ -287,7 +311,9 @@ when defined(gfx) or defined(nimdoc):
     ): bool {.inline.} =
     ## Clips values to 0 outside the range [thresholdMin, thresholdMax], 255 inside.
     ## **Formula:** `D = (S >= thresholdMin and S <= thresholdMax) ? 255 : 0`.
-    sdlOp(SDL_imageFilterClipToRange, src, dest, thresholdMin, thresholdMax)
+    let bufLen = min(src.len, dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterClipToRange(addr src[0], addr dest[0], cuint(bufLen), thresholdMin, thresholdMax)
 
   proc filterNormalizeLinear*(
       src, dest: var openArray[uint8];
@@ -295,7 +321,9 @@ when defined(gfx) or defined(nimdoc):
       newMin, newMax: int
     ): bool {.inline.} =
     ## Linear contrast stretch from [`currentMin`, `currentMax`] to [`newMin`, `newMax`].
-    sdlOp(SDL_imageFilterNormalizeLinear, src, dest, cint(currentMin), cint(currentMax), cint(newMin), cint(newMax))
+    let bufLen = min(src.len, dest.len)
+    if bufLen == 0: return false
+    sdlOk SDL_imageFilterNormalizeLinear(addr src[0], addr dest[0], cuint(bufLen), cint(currentMin), cint(currentMax), cint(newMin), cint(newMax))
 
   # --- Convolution kernels ---
 
@@ -311,7 +339,7 @@ when defined(gfx) or defined(nimdoc):
     ## boundary-terminated (no edge handling). Use `divisor` to normalize
     ## (e.g., divisor = sum of kernel weights).
     if kernel.len < 9: return false
-    convCall(SDL_imageFilterConvolveKernel3x3Divide, src, dest, rows, columns, kernel, divisor)
+    sdlOk SDL_imageFilterConvolveKernel3x3Divide(addr src[0], addr dest[0], cint(rows), cint(columns), cast[ptr int16](addr kernel[0]), divisor)
 
   proc filterConvolve5x5*(
       src, dest: var openArray[uint8];
@@ -323,7 +351,7 @@ when defined(gfx) or defined(nimdoc):
     ##
     ## **Note:** `kernel` must have at least 25 elements.
     if kernel.len < 25: return false
-    convCall(SDL_imageFilterConvolveKernel5x5Divide, src, dest, rows, columns, kernel, divisor)
+    sdlOk SDL_imageFilterConvolveKernel5x5Divide(addr src[0], addr dest[0], cint(rows), cint(columns), cast[ptr int16](addr kernel[0]), divisor)
 
   proc filterConvolve7x7*(
       src, dest: var openArray[uint8];
@@ -335,7 +363,7 @@ when defined(gfx) or defined(nimdoc):
     ##
     ## **Note:** `kernel` must have at least 49 elements.
     if kernel.len < 49: return false
-    convCall(SDL_imageFilterConvolveKernel7x7Divide, src, dest, rows, columns, kernel, divisor)
+    sdlOk SDL_imageFilterConvolveKernel7x7Divide(addr src[0], addr dest[0], cint(rows), cint(columns), cast[ptr int16](addr kernel[0]), divisor)
 
   proc filterConvolve9x9*(
       src, dest: var openArray[uint8];
@@ -347,7 +375,7 @@ when defined(gfx) or defined(nimdoc):
     ##
     ## **Note:** `kernel` must have at least 81 elements.
     if kernel.len < 81: return false
-    convCall(SDL_imageFilterConvolveKernel9x9Divide, src, dest, rows, columns, kernel, divisor)
+    sdlOk SDL_imageFilterConvolveKernel9x9Divide(addr src[0], addr dest[0], cint(rows), cint(columns), cast[ptr int16](addr kernel[0]), divisor)
 
   proc filterConvolve3x3ShiftRight*(
       src, dest: var openArray[uint8];
@@ -360,7 +388,7 @@ when defined(gfx) or defined(nimdoc):
     ##
     ## **Note:** Shift-right is faster than division for power-of-two normalization.
     if kernel.len < 9: return false
-    convCall(SDL_imageFilterConvolveKernel3x3ShiftRight, src, dest, rows, columns, kernel, rightShift)
+    sdlOk SDL_imageFilterConvolveKernel3x3ShiftRight(addr src[0], addr dest[0], cint(rows), cint(columns), cast[ptr int16](addr kernel[0]), rightShift)
 
   proc filterConvolve5x5ShiftRight*(
       src, dest: var openArray[uint8];
@@ -370,7 +398,7 @@ when defined(gfx) or defined(nimdoc):
     ): bool {.inline.} =
     ## 5x5 convolution using arithmetic shift-right. No C fallback; requires MMX.
     if kernel.len < 25: return false
-    convCall(SDL_imageFilterConvolveKernel5x5ShiftRight, src, dest, rows, columns, kernel, rightShift)
+    sdlOk SDL_imageFilterConvolveKernel5x5ShiftRight(addr src[0], addr dest[0], cint(rows), cint(columns), cast[ptr int16](addr kernel[0]), rightShift)
 
   proc filterConvolve7x7ShiftRight*(
       src, dest: var openArray[uint8];
@@ -380,7 +408,7 @@ when defined(gfx) or defined(nimdoc):
     ): bool {.inline.} =
     ## 7x7 convolution using arithmetic shift-right. No C fallback; requires MMX.
     if kernel.len < 49: return false
-    convCall(SDL_imageFilterConvolveKernel7x7ShiftRight, src, dest, rows, columns, kernel, rightShift)
+    sdlOk SDL_imageFilterConvolveKernel7x7ShiftRight(addr src[0], addr dest[0], cint(rows), cint(columns), cast[ptr int16](addr kernel[0]), rightShift)
 
   proc filterConvolve9x9ShiftRight*(
       src, dest: var openArray[uint8];
@@ -390,7 +418,7 @@ when defined(gfx) or defined(nimdoc):
     ): bool {.inline.} =
     ## 9x9 convolution using arithmetic shift-right. No C fallback; requires MMX.
     if kernel.len < 81: return false
-    convCall(SDL_imageFilterConvolveKernel9x9ShiftRight, src, dest, rows, columns, kernel, rightShift)
+    sdlOk SDL_imageFilterConvolveKernel9x9ShiftRight(addr src[0], addr dest[0], cint(rows), cint(columns), cast[ptr int16](addr kernel[0]), rightShift)
 
   # --- Edge detection ---
 
@@ -401,7 +429,7 @@ when defined(gfx) or defined(nimdoc):
     ## Sobel X (horizontal) edge detection. No C fallback; requires MMX.
     ##
     ## **Note:** Emphasises vertical edges in the input image.
-    imgOp(SDL_imageFilterSobelX, src, dest, rows, columns)
+    sdlOk SDL_imageFilterSobelX(addr src[0], addr dest[0], cint(rows), cint(columns))
 
   proc filterSobelXShiftRight*(
       src, dest: var openArray[uint8];
@@ -412,6 +440,6 @@ when defined(gfx) or defined(nimdoc):
     ##
     ## **Note:** Use `rightShift` to control output intensity
     ## (higher shift = darker edges).
-    imgOp(SDL_imageFilterSobelXShiftRight, src, dest, rows, columns, rightShift)
+    sdlOk SDL_imageFilterSobelXShiftRight(addr src[0], addr dest[0], cint(rows), cint(columns), rightShift)
 else:
   {.fatal: "sdl/gfxfilter requires -d:gfx compile flag (SDL_gfx library)".}
