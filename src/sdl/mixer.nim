@@ -1,23 +1,33 @@
 ## # sdl/mixer
 ##
-## Audio mixing and music playback using SDL_mixer
+## Audio mixing, music playback, and SoundFont management using SDL_mixer
 ##
-## This module provides high-level audio mixing capabilities through the SDL_mixer library.
-## It supports multiple simultaneous sound effects (chunks), background music, fading,
-## and 3D positional audio.
+## This module provides high-level audio mixing through the SDL_mixer library.
+## Supports multiple simultaneous sound effects (chunks), background music with
+## fading, 3D positional audio, group channel management, and SoundFont iteration.
 ##
 ## ## SDL 1.2 Reference
 ##
-## SDL_mixer extends SDL 1.2 with audio mixing, supporting multiple formats like WAV, MP3,
+## SDL_mixer extends SDL 1.2 with audio mixing, supporting formats like WAV, MP3,
 ## OGG, FLAC, and MOD. It provides 8 mixing channels by default (configurable).
 ##
-## **Key C functions:**
-## ```c
-## int Mix_Init(int flags);
-## int Mix_OpenAudio(int frequency, Uint16 format, int channels, int chunksize);
-## Mix_Chunk *Mix_LoadWAV_RW(SDL_RWops *src, int freesrc);
-## int Mix_PlayChannelTimed(int channel, Mix_Chunk *chunk, int loops, int ticks);
-## ```
+## ## Advantages over C SDL_mixer
+##
+## | C SDL_mixer                    | Nim SDL                        |
+## |--------------------------------|--------------------------------|
+## | `Mix_Chunk *chunk` manual free | `Chunk` RAII auto-free         |
+## | `Mix_Music *music` manual free | `Music` RAII auto-free         |
+## | Magic numbers for loops        | `infiniteLoops` constant       |
+## | Integer return codes           | `Option[T]` for error handling |
+## | `cdecl` callbacks with pointer | `cstring` overloads, iterators |
+## | Manual `Mix_EachSoundFont`     | `soundFontPaths()` iterator    |
+##
+## ## API Highlights
+##
+## - **RAII:** `Chunk` / `Music` — auto-freed on scope exit, move-only
+## - **Type safety:** `AudioChannel` / `AudioGroup` distinct types; `Volume` enforced `range[0..128]`
+## - **Zero-alloc:** `cstring` overloads for `loadWav`, `loadMus`, `musicCmd`, `soundFonts=`; `soundFontPaths()` iterator walks SDL buffer without heap
+## - **Effects:** `panning=`, `position=`, `distance=`, `reverseStereo=` per-channel; `registerEffect` / `unregisterEffect` for custom DSP
 ##
 ## ## Usage Example
 ##
@@ -50,15 +60,6 @@
 ##       if event.kind == quit:
 ##         running = false
 ## ```
-##
-## ## Advantages over C SDL_mixer
-##
-## | C SDL_mixer                    | Nim SDL                        |
-## |--------------------------------|--------------------------------|
-## | `Mix_Chunk *chunk` manual free | `Chunk` RAII auto-free         |
-## | `Mix_Music *music` manual free | `Music` RAII auto-free         |
-## | Magic numbers for loops        | `infiniteLoops` constant       |
-## | Integer return codes           | `Option[T]` for error handling |
 ##
 ## ## Requirements
 ##
