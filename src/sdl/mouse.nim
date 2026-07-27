@@ -22,40 +22,38 @@
 ##
 ## ```nim
 ## import sdl
-##
+## 
 ## runMain:
 ##   let ctx = sdlInit(sdlInitVideo)
 ##   defer: ctx.quit()
-##
+## 
 ##   let screen = setVideoMode(640, 480, 32, sdlSwSurface)
-##
+## 
 ##   # Create custom cursor
 ##   let cursorData = [0xFF'u8, 0x81, 0x81, 0x81, 0x81, 0x81, 0x81, 0xFF]
 ##   let cursorMask = [0xFF'u8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]
-##   let customCursor = createCursor(cursorData, cursorMask, 8, 8, 0, 0)
-##
-##   if customCursor.isSome:
-##     setCursor(customCursor.get)
-##
+##   let c = createCursor(cursorData, cursorMask, 8, 8, 0, 0)
+##   if c.isSome:
+##     cursor = c.get
+## 
 ##   # Read mouse state
-##   let state = getMouseState()
+##   let state = mouseState()
 ##   if isPressed(state.buttons, left):
 ##     echo "Left click at (", state.x, ", ", state.y, ")"
-##
+## 
 ##   # Hide cursor
 ##   discard showCursor(false)
-##
+## 
 ##   var running = true
 ##   while running:
-##     for event in pollEvents():
-##       if event.kind == quit:
+##     for evt in pollEvents():
+##       if evt.kind == quit:
 ##         running = false
-##
-##     # Read current mouse state
-##     let mouse = getMouseState()
+## 
+##     let mouse = mouseState()
 ##     if isPressed(mouse.buttons, right):
 ##       echo "Right click!"
-##
+## 
 ##     screen.flip()
 ## ```
 ##
@@ -63,10 +61,18 @@
 ##
 ## | C SDL 1.2                        | Nim SDL                          |
 ## |----------------------------------|----------------------------------|
-## | `SDL_GetMouseState(&x, &y)`      | `getMouseState()` returns tuple  |
+## | `SDL_GetMouseState(&x, &y)`      | `mouseState()` returns tuple     |
 ## | `SDL_Cursor *cursor` manual free | `Cursor` RAII auto-free          |
 ## | Manual bitmask checks            | `isPressed()` helper             |
 ## | Integer return codes             | `Option[T]` for error handling   |
+##
+## ## API Highlights
+##
+## - **RAII:** `Cursor` — auto-freed on scope exit, move-only
+## - **Safe:** `createCursor()` returns `Option[Cursor]` — no null pointers
+## - **Tuple returns:** `mouseState()` / `relativeMouseState()` return `(x, y, buttons)`
+## - **Type safety:** `MouseButton` enum with `isPressed()` helper
+## - **Dual ownership:** `Cursor` (owned), `CursorHandle` (read-only)
 ##
 ## ## See Also
 ##
@@ -173,12 +179,12 @@ type CursorHandle* = object
 # MOUSE STATE
 # ---------------------------------------------------------
 
-proc getMouseState*(): tuple[x, y: int32, buttons: uint8] {.inline.} =
+proc mouseState*(): tuple[x, y: int32, buttons: uint8] {.inline.} =
   ## Returns current mouse position and button states.
   ##
   ## **Example:**
   ## ```nim
-  ## let state = getMouseState()
+  ## let state = mouseState()
   ## echo "Mouse at (", state.x, ", ", state.y, ")"
   ## if isPressed(state.buttons, left):
   ##   echo "Left button pressed"
@@ -188,12 +194,12 @@ proc getMouseState*(): tuple[x, y: int32, buttons: uint8] {.inline.} =
   result.x = int32(cx)
   result.y = int32(cy)
 
-proc getRelativeMouseState*(): tuple[x, y: int32, buttons: uint8] {.inline.} =
+proc relativeMouseState*(): tuple[x, y: int32, buttons: uint8] {.inline.} =
   ## Returns mouse motion since the last call and current button states.
   ##
   ## **Example:**
   ## ```nim
-  ## let motion = getRelativeMouseState()
+  ## let motion = relativeMouseState()
   ## echo "Mouse moved by (", motion.x, ", ", motion.y, ")"
   ## ```
   var cx, cy: cint
@@ -219,12 +225,12 @@ proc createCursor*(data, mask: openArray[uint8], w, h, hotX, hotY: int32): Optio
   ## let mask = [0xFF'u8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]
   ## let cursor = createCursor(data, mask, 8, 8, 0, 0)
   ## if cursor.isSome:
-  ##   setCursor(cursor.get)
+  ##   cursor = cursor.get
   ## ```
   ##
   ## **Note:** Data and mask must have the same length. Width must be a multiple of 8.
-  assert data.len > 0 and mask.len > 0, "Cursor data cannot be empty!"
-  assert data.len == mask.len, "Data and Mask must have the exact same size in bytes."
+  if data.len == 0 or mask.len == 0 or data.len != mask.len:
+    return none(Cursor)
 
   SDL_CreateCursor(
     unsafeAddr data[0],
@@ -233,18 +239,11 @@ proc createCursor*(data, mask: openArray[uint8], w, h, hotX, hotY: int32): Optio
     cint(hotX), cint(hotY)
   ).toOption(Cursor)
 
-proc setCursor*(cursor: Cursor) {.inline.} =
-  ## Sets the active cursor to the given custom cursor.
-  ##
-  ## **Example:**
-  ## ```nim
-  ## let cursor = createCursor(data, mask, 8, 8, 0, 0).get
-  ## setCursor(cursor)
-  ## ```
-  assert cursor.raw != nil, "Attempted to use an invalid or destroyed cursor!"
-  SDL_SetCursor(cursor.raw)
+proc `cursor=`*(c: var Cursor) {.inline.} =
+  ## Sets the active cursor (borrows `c`; `c` must outlive its use).
+  SDL_SetCursor(c.raw)
 
-proc getCursor*(): CursorHandle {.inline.} =
+proc cursor*(): CursorHandle {.inline.} =
   ## Returns a read-only handle to the currently active cursor.
   CursorHandle(raw: SDL_GetCursor())
 
