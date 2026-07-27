@@ -187,9 +187,6 @@ when defined(mixer):
     EffectDoneFunc* = proc(chan: cint, udata: pointer) {.cdecl.}
       ## Callback invoked when an effect is removed from a channel.
 
-    SoundFontIterFunc* = proc(path: cstring, data: pointer): cint {.cdecl.}
-      ## Callback for iterating SoundFont paths.
-
     RawChunk {.importc: "Mix_Chunk"} = object
       allocated: cint
       abuf: AudioBuffer
@@ -285,7 +282,6 @@ when defined(mixer):
   proc Mix_GetSynchroValue(): cint {.importc.}
   proc Mix_SetSoundFonts(paths: cstring): cint {.importc.}
   proc Mix_GetSoundFonts(): cstring {.importc.}
-  proc Mix_EachSoundFont(function: SoundFontIterFunc, data: pointer): cint {.importc.}
   proc Mix_GetChunk(channel: cint): RawChunkPtr {.importc.}
 
   {.pop.}
@@ -799,6 +795,23 @@ when defined(mixer):
     ## Returns the current SoundFont search paths.
     Mix_GetSoundFonts()
 
-  proc eachSoundFont*(fn: SoundFontIterFunc, data: pointer): bool {.inline.} =
-    ## Iterates over each SoundFont path, calling `fn` for each.
-    sdlNonZero Mix_EachSoundFont(fn, data)
+  iterator soundFontPaths*(): cstring =
+    ## Iterates over each configured SoundFont path as a `cstring`.
+    ## Pointers are valid until the next call to `soundFonts=`.
+    ##
+    ## **Example:**
+    ## ```nim
+    ## for sf in soundFontPaths():
+    ##   echo sf
+    ## ```
+    let all = Mix_GetSoundFonts()
+    if all.isNil: return
+    var i = 0
+    var start = 0
+    while all[i] != '\0':
+      if all[i] == ':':
+        yield cast[cstring](addr all[start])
+        start = i + 1
+      inc i
+    if all[start] != '\0':
+      yield cast[cstring](addr all[start])
