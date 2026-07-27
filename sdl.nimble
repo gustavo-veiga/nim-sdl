@@ -41,5 +41,4 @@ task distclean, "Remove all build artifacts and generated files":
   exec "nim r scripts/distclean.nim"
 
 task coverage, "Generate HTML coverage report (requires lcov, genhtml)":
-  exec "nimble test --passC:--coverage --passL:--coverage --debugger:native"
   exec "nim r scripts/coverage.nim"
