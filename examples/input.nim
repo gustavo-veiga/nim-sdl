@@ -19,10 +19,10 @@ runMain:
     cursor = initRect(0, 0, 15, 15)
     touching = false
 
-    bgColor = screen.mapRGB(20, 20, 30)
-    playerColor = screen.mapRGB(0, 150, 255)
-    cursorColor = screen.mapRGB(255, 200, 0)
-    touchColor = screen.mapRGB(255, 50, 50)
+    bgColor = screen.toPixel(20, 20, 30)
+    playerColor = screen.toPixel(0, 150, 255)
+    cursorColor = screen.toPixel(255, 200, 0)
+    touchColor = screen.toPixel(255, 50, 50)
 
   while running:
     for event in pollEvents():

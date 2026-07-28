@@ -14,8 +14,8 @@ var
 
   playerRect = initRect(300, 100, 40, 40)
 
-  bgColor = screen.mapRGB(0, 0, 128)
-  playerColor = screen.mapRGB(255, 0, 0)
+  bgColor = screen.toPixel(0, 0, 128)
+  playerColor = screen.toPixel(255, 0, 0)
 
 while running:
   for event in pollEvents():

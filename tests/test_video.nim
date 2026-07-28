@@ -58,23 +58,23 @@ suite "Surface":
 
   test "fill":
     let s = createRgbSurface(10, 10).get()
-    check s.fill(0xFFFF0000'u32) == true
+    check s.fill(Pixel(0xFFFF0000'u32)) == true
 
   test "fill com Rect":
     let s = createRgbSurface(10, 10).get()
     let rect = initRect(0, 0, 5, 5)
-    check s.fill(rect, 0xFFFFFFFF'u32) == true
+    check s.fill(rect, Pixel(0xFFFFFFFF'u32)) == true
 
-  test "mapRGB":
+  test "toPixel":
     let s = createRgbSurface(10, 10).get()
-    let c1 = s.mapRGB(255, 0, 0)
-    let c2 = s.mapRGB((r: 255'u8, g: 0'u8, b: 0'u8))
+    let c1 = s.toPixel(255, 0, 0)
+    let c2 = s.toPixel((r: 255'u8, g: 0'u8, b: 0'u8))
     check c1 == c2
 
-  test "mapRGBA":
+  test "toPixel (RGBA)":
     let s = createRgbSurface(10, 10).get()
-    let rgba = s.mapRGBA(100, 150, 200, 128)
-    check rgba > 0
+    let rgba = s.toPixel(100, 150, 200, 128)
+    check uint32(rgba) > 0
 
   test "lock/unlock":
     let s = createRgbSurface(10, 10).get()

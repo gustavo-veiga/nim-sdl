@@ -99,7 +99,8 @@ type
 
   Color* {.importc: "SDL_Color".} = object
     ## An RGBA color value.
-    r*, g*, b*, unused: uint8
+    r*, g*, b*: uint8
+    unused: uint8
 
   RawPalette* {.importc: "SDL_Palette".} = object
     ## A palette of colors for indexed surfaces.
@@ -290,8 +291,17 @@ type
   ColorMask* = tuple[r, g, b, a: uint32]
     ## RGBA bit masks for pixel format creation.
 
-  ## All-zero color mask (creates a default pixel format).
-const maskZero*: ColorMask = (0'u32, 0'u32, 0'u32, 0'u32)
+  Pixel* = distinct uint32
+    ## A pixel value in a surface's native pixel format.
+    ## Returned by `toPixel` and accepted by `fill`, `rgb`, and `rgba`.
+
+## Compares two pixel values for equality.
+proc `==`*(x, y: Pixel): bool {.borrow.}
+
+## Converts a pixel value to its string representation.
+proc `$`*(x: Pixel): string {.borrow.}
+
+const maskZero*: ColorMask = (0'u32, 0'u32, 0'u32, 0'u32)  ## All-zero color mask (creates a default pixel format).
 
 # ---------------------------------------------------------
 # 16-bit masks
@@ -579,12 +589,13 @@ proc quitVideo*() {.inline.} =
   ## Shuts down and cleans up only the video subsystem.
   SDL_VideoQuit()
 
-proc videoDriverName*(): Option[cstring] {.inline.} =
+proc videoDriverName*(): Option[string] {.inline.} =
   ## Returns the name of the current video driver (e.g. "x11", "windib").
   ## Returns `none` if the video subsystem is not initialized.
-  var buf {.global.}: array[64, char]
+  var buf: array[64, char]
 
-  SDL_VideoDriverName(buf.cBuf, buf.cLen).toOption()
+  let res = SDL_VideoDriverName(buf.cBuf, buf.cLen)
+  if res.isNil: none(string) else: some($res)
 
 proc videoSurface*(): Option[DisplaySurface] {.inline.} =
   ## Returns the current video surface (the display), or `none` if not initialized.
@@ -612,10 +623,10 @@ proc listModes*(
 
   if p == nil:
     VideoModeResult(anyDimension: false, rawModes: nil)
-  elif cast[int](p) == -1:
+  elif p == cast[ptr ptr Rect](-1):
     VideoModeResult(anyDimension: true, rawModes: nil)
   else:
-    VideoModeResult(anyDimension: false, rawModes: cast[ptr ptr Rect](p))
+    VideoModeResult(anyDimension: false, rawModes: p)
 
 iterator items*(res: VideoModeResult): Rect =
   ## Iterates over the modes returned by listModes().
@@ -709,8 +720,7 @@ template withLock*(surface: AnySurface; body: untyped): bool =
 
 # --- BMP Manipulation ---
 
-proc loadBmp*(src: RWops; freeSrc: bool = true): Option[
-    Surface] {.inline.} =
+proc loadBmp*(src: RWops; freeSrc: bool = true): Option[Surface] {.inline.} =
   ## Loads a BMP image from an RWops stream.
   let p = SDL_LoadBMP_RW(src.unsafeRaw, if freeSrc: 1 else: 0)
   if p == nil: result = none(Surface)
@@ -724,20 +734,15 @@ proc saveBmp*(surface: Surface; dst: RWops; freeDst: bool = true): bool {.inline
 # CLIPPING
 # ---------------------------------------------------------
 
-proc clearClipRect*(surface: Surface): bool {.inline.} =
+proc clearClipRect*(surface: AnySurface): bool {.inline.} =
   ## Removes the clipping rectangle, allowing drawing on the entire surface again.
   sdlNonZero SDL_SetClipRect(surface.raw, nil)
 
-proc `clipRect=`*(surface: Surface, rect: Rect): bool {.inline.} =
+proc `clipRect=`*(surface: AnySurface; rect: Rect): bool {.inline.} =
   ## Sets the clipping area. Only pixels inside the rectangle will be drawn.
   ## Returns `true` if the rectangle intersects the surface.
   var r = rect # Mutable copy on the stack to take its address
   result = sdlNonZero SDL_SetClipRect(surface.raw, addr r)
-
-proc clipRect*(surface: Surface): Rect {.inline.} =
-  ## Returns the current clipping area of the surface.
-  ## Zero-GC: SDL writes the result directly into the return variable.
-  SDL_GetClipRect(surface.raw, addr result)
 
 # ---------------------------------------------------------
 # FORMAT OPTIMIZATION AND CONVERSION
@@ -771,39 +776,39 @@ proc convertSurface*(
 # COLOR FILL
 # ---------------------------------------------------------
 
-proc fill*(surface: AnySurface; color: uint32): bool {.inline.} =
-  ## Fills the entire surface with a color.
-  result = sdlOk SDL_FillRect(surface.raw, nil, color)
+proc fill*(surface: AnySurface; color: Pixel): bool {.inline.} =
+  ## Fills the entire surface with a pixel color value.
+  result = sdlOk SDL_FillRect(surface.raw, nil, uint32(color))
 
-proc fill*(surface: AnySurface; rect: Rect; color: uint32): bool {.inline.} =
-  ## Fills the area delimited by the Rect with the color.
+proc fill*(surface: AnySurface; rect: Rect; color: Pixel): bool {.inline.} =
+  ## Fills a rectangular area with a pixel color value.
   var r = rect
-  result = sdlOk SDL_FillRect(surface.raw, addr r, color)
+  result = sdlOk SDL_FillRect(surface.raw, addr r, uint32(color))
 
 # ---------------------------------------------------------
 # BLITTING
 # ---------------------------------------------------------
 
 # Overload 1: Simple blit (draws the entire image at coordinates X, Y)
-proc blit*(source: AnySurface; target: Surface; x: int16 = 0; y: int16 = 0): bool {.inline.} =
+proc blit*(source: AnySurface; target: AnySurface; x: int16 = 0; y: int16 = 0): bool {.inline.} =
   ## Copies the entire 'source' surface to 'target' at the specified coordinates.
   var dRect = initRect(x, y, 0, 0)
   result = sdlOk SDL_UpperBlit(source.raw, nil, target.raw, addr dRect)
 
 # Overload 2: Specific region (copies a rect from source to destination X, Y)
-proc blit*(source: AnySurface; target: Surface; rect: Rect; x: int16 = 0; y: int16 = 0): bool {.inline.} =
+proc blit*(source: AnySurface; target: AnySurface; rect: Rect; x: int16 = 0; y: int16 = 0): bool {.inline.} =
   ## Useful for spritesheets: copies a 'rect' region from the source and blits it to the target.
   var sRect = rect
   var dRect = initRect(int16(x), int16(y), 0, 0)
   result = sdlOk SDL_UpperBlit(source.raw, addr sRect, target.raw, addr dRect)
 
-proc blitRaw*(source: AnySurface; target: Surface; x, y: int): bool {.inline.} =
+proc blitRaw*(source: AnySurface; target: AnySurface; x, y: int): bool {.inline.} =
   ## Raw copy of the ENTIRE surface to the target.
   ## Ignores SDL clipping. Maximum speed for backgrounds or fixed HUDs.
   var dRect = initRect(int16(x), int16(y), 0, 0)
   result = sdlOk SDL_LowerBlit(source.raw, nil, target.raw, addr dRect)
 
-proc blitRaw*(source: AnySurface; target: Surface; rect: Rect; x: int = 0; y: int = 0): bool {.inline.} =
+proc blitRaw*(source: AnySurface; target: AnySurface; rect: Rect; x: int = 0; y: int = 0): bool {.inline.} =
   ## **Warning** (Low Level Access):
   ## Raw memory copy that skips SDL clipping checks.
   ## Only use in custom engines where you guarantee coordinates are within bounds.
@@ -907,50 +912,52 @@ proc getGammaRamp*(red, green, blue: ptr GammaRamp): bool {.inline.} =
   )
 
 # ---------------------------------------------------------
-# COLOR MAPPING
+# PIXEL CONVERSION
 # ---------------------------------------------------------
 
-proc mapRGB*(surface: AnySurface; r, g, b: uint8): uint32 {.inline.} =
-  ## Maps RGB values to a pixel value for the surface's format.
-  SDL_MapRGB(surface.raw.format, r, g, b)
+proc toPixel*(surface: AnySurface; r, g, b: uint8): Pixel {.inline.} =
+  ## Converts RGB to a pixel value for the surface's pixel format.
+  Pixel(SDL_MapRGB(surface.raw.format, r, g, b))
 
-proc mapRGB*(surface: AnySurface; color: tuple[r, g, b: uint8]): uint32 {.inline.} =
-  ## Maps an RGB tuple to a pixel value for the surface's format.
-  SDL_MapRGB(surface.raw.format, color.r, color.g, color.b)
+proc toPixel*(surface: AnySurface; color: tuple[r, g, b: uint8]): Pixel {.inline.} =
+  ## Converts an RGB tuple to a pixel value for the surface's pixel format.
+  Pixel(SDL_MapRGB(surface.raw.format, color.r, color.g, color.b))
 
-proc mapRGB*(format: PixelFormat; r, g, b: uint8): uint32 {.inline.} =
-  ## Maps RGB values to a pixel value for a specific pixel format.
-  SDL_MapRGB(format, r, g, b)
+proc toPixel*(format: PixelFormat; r, g, b: uint8): Pixel {.inline.} =
+  ## Converts RGB to a pixel value for a specific pixel format.
+  Pixel(SDL_MapRGB(format, r, g, b))
 
-proc mapRGB*(format: PixelFormat; color: tuple[r, g, b: uint8]): uint32 {.inline.} =
-  ## Maps an RGB tuple to a pixel value for a specific pixel format.
+proc toPixel*(format: PixelFormat; color: tuple[r, g, b: uint8]): Pixel {.inline.} =
+  ## Converts an RGB tuple to a pixel value for a specific pixel format.
+  Pixel(SDL_MapRGB(format, color.r, color.g, color.b))
 
-proc mapRGBA*(surface: AnySurface; r, g, b, a: uint8): uint32 {.inline.} =
-  ## Maps RGBA values to a pixel value for the surface's format.
-  SDL_MapRGBA(surface.raw.format, r, g, b, a)
+proc toPixel*(surface: AnySurface; r, g, b, a: uint8): Pixel {.inline.} =
+  ## Converts RGBA to a pixel value for the surface's pixel format.
+  Pixel(SDL_MapRGBA(surface.raw.format, r, g, b, a))
 
-proc mapRGBA*(surface: AnySurface; color: tuple[r, g, b, a: uint8]): uint32 {.inline.} =
-  ## Maps an RGBA tuple to a pixel value for the surface's format.
-  SDL_MapRGBA(surface.raw.format, color.r, color.g, color.b, color.a)
+proc toPixel*(surface: AnySurface; color: tuple[r, g, b, a: uint8]): Pixel {.inline.} =
+  ## Converts an RGBA tuple to a pixel value for the surface's pixel format.
+  Pixel(SDL_MapRGBA(surface.raw.format, color.r, color.g, color.b, color.a))
 
-proc mapRGBA*(format: PixelFormat; r, g, b, a: uint8): uint32 {.inline.} =
-  ## Maps RGBA values to a pixel value for a specific pixel format.
-  SDL_MapRGBA(format, r, g, b, a)
+proc toPixel*(format: PixelFormat; r, g, b, a: uint8): Pixel {.inline.} =
+  ## Converts RGBA to a pixel value for a specific pixel format.
+  Pixel(SDL_MapRGBA(format, r, g, b, a))
 
-proc mapRGBA*(format: PixelFormat; color: tuple[r, g, b, a: uint8]): uint32 {.inline.} =
-  ## Maps an RGBA tuple to a pixel value for a specific pixel format.
+proc toPixel*(format: PixelFormat; color: tuple[r, g, b, a: uint8]): Pixel {.inline.} =
+  ## Converts an RGBA tuple to a pixel value for a specific pixel format.
+  Pixel(SDL_MapRGBA(format, color.r, color.g, color.b, color.a))
 
 # ---------------------------------------------------------
 # COLOR READING (NIM TUPLES)
 # ---------------------------------------------------------
 
-proc rgb*(surface: AnySurface; pixel: uint32): tuple[r, g, b: uint8] {.inline.} =
-  ## Extracts RGB components from a pixel value.
-  SDL_GetRGB(pixel, surface.raw.format, addr result.r, addr result.g, addr result.b)
+proc rgb*(surface: AnySurface; pixel: Pixel): tuple[r, g, b: uint8] {.inline.} =
+  ## Extracts RGB components from a pixel value into a tuple.
+  SDL_GetRGB(uint32(pixel), surface.raw.format, addr result.r, addr result.g, addr result.b)
 
-proc rgba*(surface: AnySurface; pixel: uint32): tuple[r, g, b, a: uint8] {.inline.} =
-  ## Extracts RGBA components from a pixel value.
-  SDL_GetRGBA(pixel, surface.raw.format, addr result.r, addr result.g, addr result.b, addr result.a)
+proc rgba*(surface: AnySurface; pixel: Pixel): tuple[r, g, b, a: uint8] {.inline.} =
+  ## Extracts RGBA components from a pixel value into a tuple.
+  SDL_GetRGBA(uint32(pixel), surface.raw.format, addr result.r, addr result.g, addr result.b, addr result.a)
 
 # ---------------------------------------------------------
 # TRANSPARENCY (COLOR KEY & ALPHA)
@@ -961,9 +968,9 @@ proc clearColorKey*(surface: AnySurface): bool {.inline.} =
   result = sdlOk SDL_SetColorKey(surface.raw, 0'u32, 0'u32)
 
 proc `colorKey=`*(surface: AnySurface; color: tuple[r, g, b: uint8]): bool {.inline.} =
-  ## Enables transparency using the specified RGB color as key.
-  let keyPixel = surface.mapRGB(color.r, color.g, color.b)
-  result = sdlOk SDL_SetColorKey(surface.raw, uint32(SurfaceFlag.srcColorKey), keyPixel)
+  ## Enables transparency using the specified RGB color as color key.
+  let keyPixel = surface.toPixel(color.r, color.g, color.b)
+  result = sdlOk SDL_SetColorKey(surface.raw, uint32(SurfaceFlag.srcColorKey), uint32(keyPixel))
 
 proc `alpha=`*(surface: AnySurface; alpha: uint8): bool {.inline.} =
   ## Sets the global image opacity (0 = Invisible, 255 = Solid).
@@ -975,14 +982,12 @@ proc `alpha=`*(surface: AnySurface; alpha: uint8): bool {.inline.} =
 # HARDWARE YUV OVERLAYS (VIDEO AND FMV)
 # ---------------------------------------------------------
 
-proc createYUVOverlay*(display: AnySurface; width, height: int; format: uint32): YUVOverlay =
+proc createYuvOverlay*(display: AnySurface; width, height: int; format: uint32): Option[YuvOverlay] =
   ## Creates a YUV overlay tied to the display surface.
-  ## Note: The format is typically a FourCC like SDL_YV12_OVERLAY (0x32315659).
-  YUVOverlay(
-    raw: SDL_CreateYUVOverlay(cint(width), cint(height), format, display.raw)
-  )
+  let p = SDL_CreateYUVOverlay(cint(width), cint(height), format, display.raw)
+  if p.isNil: none(YuvOverlay) else: some(YuvOverlay(raw: p))
 
-proc isValid*(overlay: YUVOverlay): bool {.inline.} =
+proc isValid*(overlay: YuvOverlay): bool {.inline.} =
   ## Since the hardware may refuse creation, it is vital to check for success.
   sdlValid overlay.raw
 
@@ -998,7 +1003,7 @@ proc unlock*(overlay: YuvOverlay) {.inline.} =
   ## Unlocks the overlay after CPU write access.
   SDL_UnlockYUVOverlay(overlay.raw)
 
-template lock*(overlay: YUVOverlay, body: untyped): bool =
+template lock*(overlay: YuvOverlay, body: untyped): bool =
   ## Locks the overlay in memory so the CPU can write video pixels.
   block:
     let success = overlay.lock()
@@ -1011,7 +1016,7 @@ template lock*(overlay: YUVOverlay, body: untyped): bool =
 # RENDERING
 # ---------------------------------------------------------
 
-proc display*(overlay: YUVOverlay; rect: Rect): bool {.inline.} =
+proc display*(overlay: YuvOverlay; rect: Rect): bool {.inline.} =
   ## Sends the overlay to the screen. The hardware will stretch it
   ## automatically to fit the destination Rect.
   var dst = rect # Mutable copy on the stack to take its address

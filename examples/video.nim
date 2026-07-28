@@ -16,7 +16,7 @@ proc runExample() =
   var screen = screenOpt.get()
   setCaption("Video Example - Pixel Access")
 
-  let bgColor = screen.mapRGB(0, 0, 128)
+  let bgColor = screen.toPixel(0, 0, 128)
   if screen.fill(bgColor):
     echo "[Video Example] Blue background drawn via fill()."
 
