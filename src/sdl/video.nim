@@ -1072,11 +1072,16 @@ proc caption*(): tuple[title, icon: cstring] =
 
   (cTitle, cIcon)
 
-proc setIcon*(icon: AnySurface; mask: ptr uint8 = nil) {.inline.} =
+proc setIcon*(icon: AnySurface) {.inline.} =
   ## Sets the game window icon.
   ## Tip: Set ColorKey transparency on the Surface BEFORE calling this function.
-  ## The 'mask' parameter is a legacy artifact from the 90s, pass `nil` safely.
-  SDL_WM_SetIcon(icon.raw, mask)
+  SDL_WM_SetIcon(icon.raw, nil)
+
+proc setIcon*(icon: AnySurface; mask: openArray[uint8]) {.inline.} =
+  ## Sets the game window icon with a transparency mask.
+  ## The mask is a 1-bit-per-pixel bitmap (row-padded to 32 bits).
+  if mask.len > 0:
+    SDL_WM_SetIcon(icon.raw, cast[ptr uint8](unsafeAddr mask[0]))
 
 proc iconifyWindow*(): bool {.inline.} =
   ## Attempts to minimize the window. Returns `true` on success.
