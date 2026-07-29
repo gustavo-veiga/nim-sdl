@@ -144,3 +144,8 @@ When mapping C structs, you must correctly identify if it is a "Plain Old Data" 
   - ✅ `type RawMutex {.importc: "SDL_mutex", incompleteStruct.} = object`
 - Create and export a pointer type using the `Ptr` suffix (e.g., `type RawMutexPtr* = ptr RawMutex`).
 - Raw C functions that manipulate these resources MUST NOT be exported.
+
+## 14. Git Workflow: Semantic & Atomic Commits
+When generating commit messages or grouping files for commits, you MUST follow these practices:
+- **Semantic Commits:** Use standard conventional commit prefixes (e.g., `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, `style:`).
+- **Atomic Commits:** Commits must be scoped to a single context or feature. DO NOT bundle unrelated changes into a single monolithic commit. Stage and commit files logically and separately based on the problem they solve.
