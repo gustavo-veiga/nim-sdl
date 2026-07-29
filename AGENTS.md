@@ -35,9 +35,9 @@ Do not blindly translate C API function names and signatures 1:1. You MUST explo
 - **Tuples and Ergonomics:** Provide overloads that accept standard Nim constructs like tuples (e.g., `tuple[r, g, b: uint8]`) or objects, rather than strictly flat C-style parameters.
 - **UFCS (Uniform Function Call Syntax):** Always place the primary subject/resource (`Surface`, `PixelFormat`, `Window`, etc.) as the **first parameter** in the proc signature. This allows users to write `surface.toPixel(...)` naturally.
 
-## 5. Zero-Cost Abstractions
+## 5. Zero-Cost Abstractions & Mandatory Inlining
 - Maximize performance. Nim is compiled to C. Your wrapper must not introduce runtime overhead.
-- Prefer `template` or `{.inline.}` procs for simple getters, setters, and direct C FFI wrappers.
+- **Mandatory Inlining:** ALL high-level public wrapper procedures MUST be marked with the `{.inline.}` pragma (or implemented as a `template`). This guarantees that the C compiler will flatten the call stack, making the Nim wrapper truly zero-cost compared to writing raw C.
 - Map C structs to Nim `object` types seamlessly. Avoid unnecessary heap allocations (`ref object`) unless strictly required.
 - Pass large objects by pointer (`ptr`), `var`, or use `{.byref.}` to avoid expensive memory copying.
 
@@ -53,8 +53,31 @@ Never expose raw primitive types (like `uint32`, `cint`, or `float`) in the publ
   proc `==`*(x, y: Pixel): bool {.borrow.}
   proc `$`*(x: Pixel): string {.borrow.}
   ```
+## 7. Constructor Naming Conventions (`init` vs `new` vs `create`)
+Nim has strict semantic conventions for instantiation prefixes based on memory management. Since this wrapper relies heavily on RAII and value types (`object`) rather than the Garbage Collector (`ref object`), you MUST follow these naming rules for constructors:
 
-## 7. RAII and Memory Safety
+- **`init` (Default for RAII & POD):** Use the `init` prefix for constructors returning value types (`object`). Since our RAII wrappers (like `Surface`, `Rect`, `Color`) are objects, their high-level constructors must use `init` (even if the underlying C function uses `Create`).
+  - ✅ `proc initSurface*(w, h: cint): Surface`
+  - ❌ `proc createSurface*(w, h: cint): Surface`
+- **`new` (BANNED for Resources):** In Nim, `new` implies heap allocation managed by the Garbage Collector (`ref object`). Because we use deterministic RAII (destructors), you MUST NOT use the `new` prefix for SDL resources.
+- **`create` (Raw Pointers Only):** The `create` prefix implies manual, unmanaged raw memory allocation returning a pointer (`ptr`). Only use this if you are explicitly designing a low-level, unsafe function that forces the user to manually free the pointer.
+- **`set` (State Mutation):** As per Rule 3, avoid `set` for simple properties (use `proc name=`). Reserve `set` for complex operations or global state mutations (e.g., `proc setVideoMode*()`).
+
+## 8. Global Functions and Namespace Pollution
+Because Nim's default `import` statement brings all exported symbols directly into the current scope (unqualified imports), you MUST actively prevent namespace pollution for global or subsystem-level operations.
+
+- **Global Operations (Generic Names):** Functions that manage global state and have overly generic names (like `init`, `quit`, or `getError`) MUST include the `Sdl` context identifier. Place it grammatically correctly (Verb + Target) and adhere to Rule 2 (Acronyms as Words).
+  - ✅ `proc initSdl*()` | ❌ `proc init*()`
+  - ✅ `proc quitSdl*()` | ❌ `proc quit*()`
+  - ✅ `proc getSdlError*()` | ❌ `proc getError*()`
+- **Global Operations (Domain-Specific Names):** If the function name is already specific to the domain and unlikely to clash with the standard library or user code, DO NOT force the `Sdl` prefix.
+  - ✅ `proc pollEvent*()` | ❌ `proc pollSdlEvent*()`
+  - ✅ `proc getTicks*()` | ❌ `proc getSdlTicks*()`
+- **Type-Bound Operations (Safe):** This restriction DOES NOT apply to functions where the primary parameter is a strong, distinct SDL type (e.g., `Surface`, `Window`, `Event`). Nim's type system handles overload resolution safely.
+  - ✅ `proc pollEvent*(event: var Event): bool`
+  - ✅ `proc fill*(surface: AnySurface, color: Pixel)` (Usage: `surface.fill(color)`)
+
+## 9. RAII and Memory Safety
 - All SDL resources (Surfaces, AudioSpecs, Joysticks) must be wrapped in custom objects utilizing Nim's destructors (`=destroy`).
 - Disable copying for strict resources using `=copy` error pragmas where applicable, and implement `=sink` for move semantics.
 - Standard Resource Pattern:
@@ -70,7 +93,7 @@ Never expose raw primitive types (like `uint32`, `cint`, or `float`) in the publ
   proc `=copy`*(dest: var Surface, source: Surface) {.error.}
   ```
 
-## 8. Smart Pointers and Escape Hatches
+## 10. Smart Pointers and Escape Hatches
 When creating RAII wrappers for opaque types, you MUST provide standardized "escape hatches" for interoperability with other modules or external C libraries (like OpenGL or SDL_image).
 - **Internal Pointer Name:** Always name the internal pointer field `raw`.
 - **Extraction (`unsafeRaw`):** Provide an inline `unsafeRaw` proc that returns the underlying pointer.
@@ -79,24 +102,28 @@ When creating RAII wrappers for opaque types, you MUST provide standardized "esc
   - ✅ `proc assumeRaw*(p: RawSurfacePtr): Surface {.inline.} = Surface(raw: p)`
 - **Move and Copy Semantics:** Explicitly implement `=sink` for move semantics (transferring ownership without double-free). If a resource cannot be copied (or if reference counting is not implemented), explicitly disable `=copy` using `{.error.}` to prevent memory leaks or segmentation faults.
 
-## 9. FFI (Foreign Function Interface) Best Practices
+## 11. FFI (Foreign Function Interface) Best Practices
 - Use `{.cdecl.}` and `{.importc.}` correctly for all SDL 1.2 function imports.
 - Use Nim's `distinct` types to map C enums and bitmasks (`Uint32` flags) to ensure type safety, overriding `or`, `and`, `==` operators for them instead of relying on weak integers.
 
-## 10. Strict FFI Type Mapping (CRITICAL)
-- Never map C's `int` to Nim's `int`. Nim's `int` is pointer-sized (64-bit on 64-bit OS), while C's `int` is typically 32-bit. This causes memory corruption.
-- Always use `cint`, `cuint`, `cfloat`, `cdouble`, `cschar`, `cshort`, etc., for raw FFI imports (`{.importc.}`).
-- You may expose regular Nim `int` in the high-level wrapper API, but you MUST cast it to `cint` before passing it to the raw SDL C function.
-  - ✅ `proc foo(x: cint) {.importc.}`
-  - ❌ `proc foo(x: int) {.importc.}`
+## 12. Strict FFI Type Mapping & Public API Boundaries (CRITICAL)
+There must be a strict, impenetrable boundary between the raw C layer and the public Nim API regarding primitive types.
 
-## 11. Error Handling & Null Pointers
+- **Raw FFI Layer:** Always use `cint`, `cuint`, `cfloat`, `cdouble`, `cschar`, etc., for raw FFI imports (`{.importc.}`). Never map C's `int` to Nim's `int` here, as Nim's `int` is pointer-sized (64-bit) while C's `int` is typically 32-bit (causing memory corruption).
+- **Public API Layer:** You MUST NEVER expose raw C types (like `cint`, `cfloat`) in exported wrapper functions (`proc name*()`). The public API must accept and return standard Nim types (e.g., `int`, `uint32`, `float`). Cast these safely to C types internally before passing them to the raw FFI.
+  - ✅ `proc fillRect*(rect: Rect, color: uint32)`
+  - ❌ `proc fillRect*(rect: Rect, color: cuint)`
+- **The `cstring` & `string` Overload Rule:** `cstring` is the ONLY C type allowed in the public API (to avoid heap allocations). However, for maximum ergonomics, functions accepting `cstring` MUST provide an inline overload that accepts a standard Nim `string`. The `string` overload should simply forward the call to the `cstring` version.
+  - ✅ `proc caption=*(title: cstring)` (Main optimized function)
+  - ✅ `proc caption=*(title: string) {.inline.} = `caption=`(title.cstring)` (Ergonomic overload)
+
+## 13. Error Handling & Null Pointers
 - C functions that return pointers often return `NULL` on failure.
 - Do not let `nil` pointers leak into the safe Nim API. Do not use Nim `Exception` types for standard C errors.
 - Wrap functions that can fail using `std/options` (`Option[T]`).
 - Example: If `SDL_SetVideoMode` fails, return `none(Surface)`. If it succeeds, return `some(Surface(sdlSurface: ptr))`.
 
-## 12. C Header Pragmas & The `bycopy` Split
+## 14. C Header Pragmas & The `bycopy` Split
 When mapping a new SDL header, you MUST separate types and functions into two distinct `{.push.}` blocks. This is required because type-specific pragmas (like `bycopy`) cannot be applied to procedure declarations.
 
 **Block 1: Types and Enums (`bycopy` required)**
@@ -118,7 +145,7 @@ proc SDL_FreeSurface*(surface: ptr Surface)
 {.pop.}
 ```
 
-## 13. C Struct Mapping: Transparent vs. Opaque
+## 15. C Struct Mapping: Transparent vs. Opaque
 When mapping C structs, you must correctly identify if it is a "Plain Old Data" (POD) struct or an Opaque Resource Handle:
 
 **A. Transparent Structs (Plain Old Data):**
@@ -145,7 +172,7 @@ When mapping C structs, you must correctly identify if it is a "Plain Old Data" 
 - Create and export a pointer type using the `Ptr` suffix (e.g., `type RawMutexPtr* = ptr RawMutex`).
 - Raw C functions that manipulate these resources MUST NOT be exported.
 
-## 14. Git Workflow: Semantic & Atomic Commits
+## 16. Git Workflow: Semantic & Atomic Commits
 When generating commit messages or grouping files for commits, you MUST follow these practices:
 - **Semantic Commits:** Use standard conventional commit prefixes (e.g., `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, `style:`).
 - **Atomic Commits:** Commits must be scoped to a single context or feature. DO NOT bundle unrelated changes into a single monolithic commit. Stage and commit files logically and separately based on the problem they solve.
