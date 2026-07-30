@@ -10,15 +10,37 @@ When generating, modifying, or reviewing code in this repository, you MUST adher
 
 ## 2. Nim Style Guide (NEP-1) Strict Enforcement
 AI models frequently hallucinate or violate NEP-1 due to cross-language training. You must explicitly follow these rules:
-- **Types/Objects:** Use `PascalCase` (e.g., `Surface`, `AudioSpec`, `Event`).
-- **Variables/Procs/Templates:** Use `camelCase` (e.g., `sdlInit`, `pollEvent`, `fillRgb`).
+
+- **Types and Objects:** Use `PascalCase` (e.g., `Surface`, `AudioSpec`, `Event`).
+- **Variables, Procedures, Iterators, and Templates:** Use `camelCase` (e.g., `sdlInit`, `pollEvent`, `fillRgb`).
+- **Enum Values (NEP-1 Strict Split):**
+  - **Pure Enums (`{.pure.}`):** Values MUST use `PascalCase` without identifying prefixes.
+    - ✅ `type KeyState {.pure.} = enum Pressed, Released`
+  - **Non-Pure Enums:** Values MUST use `camelCase` starting with a short identifying prefix.
+    - ✅ `type PathComponent = enum pcDir, pcLinkToDir, pcFile`
 - **Acronyms are Words (Strict):** Treat acronyms as standard words. Only the first letter is capitalized.
   - ✅ `isPng` | ❌ `isPNG`
   - ✅ `parseXml` | ❌ `parseXML`
   - ✅ `mapRgb` | ❌ `mapRGB`
-- **Constants:** Use `camelCase` for standard Nim constants. If mapping raw C FFI constants, you may use `PascalCase` wrapped in `distinct` types. Do not use `SCREAMING_SNAKE_CASE` unless mapping direct C `#define` macros in raw FFI files.
-- **Indentation:** Exactly 2 spaces. Never use tabs.
-- **Exporting:** Use the asterisk `*` immediately after the name to export a symbol (e.g., `type Window* = object`, `proc init*()`).
+  - ✅ `parseUrl` | ❌ `parseURL`
+  - ✅ `checkHttpHeader` | ❌ `checkHTTPHeader`
+- **Mutating Views (Iterators & Accessors):** Operations or iterators that provide a mutating view into a data structure MUST start with a lowercase `m` prefix.
+  - ✅ `iterator mitems*(s: var Surface): var Pixel`
+  - ✅ `iterator mpairs*(s: var Surface): (int, var Pixel)`
+- **Exceptions and Error Types:** All exception and error types MUST end with the `Error` suffix.
+  - ✅ `type SdlError = object of CatchableError`
+- **Type Variety Suffixes (`Obj`, `Ref`, `Ptr`):** Use the plain base name for the most commonly used variety (in RAII wrappers, this is the value-type `object`), and append explicit suffixes to other varieties.
+  - ✅ `type Surface* = object` (Primary value type)
+  - ✅ `type SurfacePtr* = ptr Surface` (FFI Pointer variety)
+- **Constants:** Use `camelCase` for standard Nim constants. If mapping raw C FFI constants, you may use `PascalCase` wrapped in `distinct` types. Do NOT use `SCREAMING_SNAKE_CASE` unless mapping direct C `#define` macros in raw FFI files.
+- **In-place Mutation vs. Transformed Copies:**
+  - Functions returning a transformed copy use the past participle of the in-place mutating function (e.g., `sort` / `sorted`, `rotate` / `rotated`).
+  - If the copy-returning version already exists as a base verb (e.g., `replace`), the in-place version gets an `-In` suffix (e.g., `replaceIn`).
+- **Implicit Result Variable (NEP-1):** Use a procedure's implicit `result` variable whenever possible instead of explicit `return` statements. Reserve `return` strictly for early control-flow exits.
+- **Immutability (`let` over `var` - NEP-1):** Declare variables with `let` by default. Only use `var` when the value is explicitly mutated in scope.
+- **Prefer Standard `proc` (NEP-1):** Prefer standard procedures (`proc`) whenever possible. Only use macros, templates, iterators, or converters when necessary.
+- **Indentation & Formatting:** Exactly 2 spaces for indentation. Never use tabs. Keep line lengths under 80 characters whenever feasible.
+- **Exporting:** Use the asterisk `*` immediately after the name to export a symbol (e.g., `type Window* = object`, `proc initSdl*()`).
 
 ## 3. Idiomatic Getters and Setters (NEP-1)
 - **Getters:** Drop the `get` prefix for simple properties or state-reading C functions.
@@ -27,22 +49,32 @@ AI models frequently hallucinate or violate NEP-1 due to cross-language training
 - **Setters:** For simple state updates, use Nim's property setter syntax (`proc `name=`(...)`).
   - ✅ `proc `caption=`*(title: string)`
   - ❌ `proc setCaption*(title: string)`
-- **Exceptions (Action Functions):** You MUST keep the `get` and `set` prefixes for functions that represent complex operations, global context changes, or where dropping it would make the verb unclear (e.g., `getError()`, `setError()`, `setVideoMode()`).
+- **Exceptions (Action Functions):** You MUST keep the `get` and `set` prefixes for functions that represent complex operations, global context changes, or where dropping it would make the verb unclear (e.g., `getSdlError()`, `setSdlError()`, `setVideoMode()`).
 
-## 4. Nim-Idiomatic API Design (Overloading & UFCS)
+## 4. Constructor Naming Conventions (`init` vs `new` vs `create`)
+Nim has strict semantic conventions for instantiation prefixes based on memory management. Since this wrapper relies heavily on RAII and value types (`object`) rather than the Garbage Collector (`ref object`), you MUST follow these naming rules for constructors:
+
+- **`init` (Default for RAII & POD):** Use the `init` prefix for constructors returning value types (`object`). Since our RAII wrappers (like `Surface`, `Rect`, `Color`) are objects, their high-level constructors must use `init` (even if the underlying C function uses `Create`).
+  - ✅ `proc initSurface*(w, h: int): Option[Surface]`
+  - ❌ `proc createSurface*(w, h: int): Option[Surface]`
+- **`new` (BANNED for Resources):** In Nim, `new` implies heap allocation managed by the Garbage Collector (`ref object`). Because we use deterministic RAII (destructors), you MUST NOT use the `new` prefix for SDL resources.
+- **`create` (Raw Pointers Only):** The `create` prefix implies manual, unmanaged raw memory allocation returning a pointer (`ptr`). Only use this if you are explicitly designing a low-level, unsafe function that forces the user to manually free the pointer.
+- **`set` (State Mutation):** As per Rule 3, avoid `set` for simple properties (use `proc name=`). Reserve `set` for complex operations or global state mutations (e.g., `proc setVideoMode*()`).
+
+## 5. Nim-Idiomatic API Design (Overloading & UFCS)
 Do not blindly translate C API function names and signatures 1:1. You MUST exploit Nim's advanced language features to create a modern, ergonomic API:
 - **Method Overloading:** Group similar C functions under a single, intuitive Nim name. For example, instead of exposing `mapRGB` and `mapRGBA`, wrap them both under multiple `proc toPixel*()` overloads.
 - **Tuples and Ergonomics:** Provide overloads that accept standard Nim constructs like tuples (e.g., `tuple[r, g, b: uint8]`) or objects, rather than strictly flat C-style parameters.
 - **UFCS (Uniform Function Call Syntax):** Always place the primary subject/resource (`Surface`, `PixelFormat`, `Window`, etc.) as the **first parameter** in the proc signature. This allows users to write `surface.toPixel(...)` naturally.
 
-## 5. Zero-Cost Abstractions & Mandatory Inlining
+## 6. Zero-Cost Abstractions & Mandatory Inlining
 - Maximize performance. Nim is compiled to C. Your wrapper must not introduce runtime overhead.
 - **Mandatory Inlining:** ALL high-level public wrapper procedures MUST be marked with the `{.inline.}` pragma (or implemented as a `template`). This guarantees that the C compiler will flatten the call stack, making the Nim wrapper truly zero-cost compared to writing raw C.
 - Map C structs to Nim `object` types seamlessly. Avoid unnecessary heap allocations (`ref object`) unless strictly required.
 - Pass large objects by pointer (`ptr`), `var`, or use `{.byref.}` to avoid expensive memory copying.
 
-## 6. Strong Typing with Distinct Types (Semantic Primitives)
-Never expose raw primitive types (like `uint32`, `cint`, or `float`) in the public API if that value has a specific semantic meaning (e.g., a pixel, an ID, a timestamp).
+## 7. Strong Typing with Distinct Types (Semantic Primitives)
+Never expose raw primitive types (like `uint32`, `int`, or `float`) in the public API if that value has a specific semantic meaning (e.g., a pixel, an ID, a timestamp).
 - **Distinct Types:** Wrap C primitives using Nim's `distinct` keyword to enforce strict type safety at compile time, preventing accidental mixing of incompatible primitives.
 - **Borrowing:** Use the `{.borrow.}` pragma to explicitly inherit necessary operations (like `==`, `<`, or `$`) from the base primitive without introducing any runtime overhead.
 - **Example:**
@@ -53,15 +85,21 @@ Never expose raw primitive types (like `uint32`, `cint`, or `float`) in the publ
   proc `==`*(x, y: Pixel): bool {.borrow.}
   proc `$`*(x: Pixel): string {.borrow.}
   ```
-## 7. Constructor Naming Conventions (`init` vs `new` vs `create`)
-Nim has strict semantic conventions for instantiation prefixes based on memory management. Since this wrapper relies heavily on RAII and value types (`object`) rather than the Garbage Collector (`ref object`), you MUST follow these naming rules for constructors:
+- **Bitmask Operator Generation:** When creating flags from enums, you MUST use the `operatorBitmask` template from `sdl/private/utils` to auto-generate typesafe `or` operators.
+  ```nim
+  import private/utils
 
-- **`init` (Default for RAII & POD):** Use the `init` prefix for constructors returning value types (`object`). Since our RAII wrappers (like `Surface`, `Rect`, `Color`) are objects, their high-level constructors must use `init` (even if the underlying C function uses `Create`).
-  - ✅ `proc initSurface*(w, h: cint): Surface`
-  - ❌ `proc createSurface*(w, h: cint): Surface`
-- **`new` (BANNED for Resources):** In Nim, `new` implies heap allocation managed by the Garbage Collector (`ref object`). Because we use deterministic RAII (destructors), you MUST NOT use the `new` prefix for SDL resources.
-- **`create` (Raw Pointers Only):** The `create` prefix implies manual, unmanaged raw memory allocation returning a pointer (`ptr`). Only use this if you are explicitly designing a low-level, unsafe function that forces the user to manually free the pointer.
-- **`set` (State Mutation):** As per Rule 3, avoid `set` for simple properties (use `proc name=`). Reserve `set` for complex operations or global state mutations (e.g., `proc setVideoMode*()`).
+  type
+    SurfaceFlag* {.pure, size: sizeof(uint32).} = enum
+      OpenGl      = 0x00000002'u32
+      AsyncBlit   = 0x00000004'u32
+      OpenGlBlit  = 0x0000000A'u32
+      Resizable   = 0x00000010'u32
+
+    SurfaceFlags* = distinct uint32
+
+  operatorBitmask(SurfaceFlag, SurfaceFlags)
+  ```
 
 ## 8. Global Functions and Namespace Pollution
 Because Nim's default `import` statement brings all exported symbols directly into the current scope (unqualified imports), you MUST actively prevent namespace pollution for global or subsystem-level operations.
@@ -78,19 +116,26 @@ Because Nim's default `import` statement brings all exported symbols directly in
   - ✅ `proc fill*(surface: AnySurface, color: Pixel)` (Usage: `surface.fill(color)`)
 
 ## 9. RAII and Memory Safety
-- All SDL resources (Surfaces, AudioSpecs, Joysticks) must be wrapped in custom objects utilizing Nim's destructors (`=destroy`).
-- Disable copying for strict resources using `=copy` error pragmas where applicable, and implement `=sink` for move semantics.
-- Standard Resource Pattern:
+- **RAII Destructors:** All SDL resources must be wrapped in custom value-type objects (`object`) utilizing Nim's `=destroy` hook.
+  - **Standard (`destroyImpl`):** For most pointer-based resources, you MUST use `destroyImpl(obj, freeFunc)` from `private/utils`.
+  - **Custom (Exceptions):** If a resource requires complex cleanup (e.g., multiple parameters for the C free function, nested struct freeing, or non-pointer IDs), write the `=destroy` hook manually. You MUST manually invalidate the raw field (e.g., set to `nil` or `0`) after freeing to prevent double-frees.
+- **Move-Only & Copy Prevention:** SDL resources are strictly move-only. You MUST disable copying by defining `=copy` with `{.error.}`.
+- **Move Semantics (`sinkImpl`):** For `=sink` implementation, you MUST use the standardized `sinkImpl` template imported from `private/utils` to guarantee consistent ownership transfer and zero double-frees across all modules.
+- **Standard Resource Pattern:**
   ```nim
+  import private/utils
+
+  type RawSurface {.incompleteStruct.} = object
+  type RawSurfacePtr* = ptr RawSurface
+
   type Surface* = object
-    sdlSurface: ptr SDL_Surface
+    raw: RawSurfacePtr
 
-  proc `=destroy`*(s: var Surface) =
-    if s.sdlSurface != nil:
-      SDL_FreeSurface(s.sdlSurface)
-      s.sdlSurface = nil
+  proc `=destroy`*(s: var Surface) = destroyImpl(s, SDL_FreeSurface)
+  proc `=sink`*(dest: var Surface; src: Surface) = sinkImpl(dest, src)
+  proc `=copy`*(dest: var Surface; src: Surface) {.error.}
 
-  proc `=copy`*(dest: var Surface, source: Surface) {.error.}
+  proc unsafeRaw*(s: Surface): RawSurfacePtr {.inline.} = s.raw
   ```
 
 ## 10. Smart Pointers and Escape Hatches
@@ -100,11 +145,17 @@ When creating RAII wrappers for opaque types, you MUST provide standardized "esc
   - ✅ `proc unsafeRaw*(s: Surface): RawSurfacePtr {.inline.} = s.raw`
 - **Wrapping (`assumeRaw`):** Provide an inline `assumeRaw` proc to wrap a raw pointer into the RAII object, assuming ownership.
   - ✅ `proc assumeRaw*(p: RawSurfacePtr): Surface {.inline.} = Surface(raw: p)`
-- **Move and Copy Semantics:** Explicitly implement `=sink` for move semantics (transferring ownership without double-free). If a resource cannot be copied (or if reference counting is not implemented), explicitly disable `=copy` using `{.error.}` to prevent memory leaks or segmentation faults.
 
 ## 11. FFI (Foreign Function Interface) Best Practices
 - Use `{.cdecl.}` and `{.importc.}` correctly for all SDL 1.2 function imports.
 - Use Nim's `distinct` types to map C enums and bitmasks (`Uint32` flags) to ensure type safety, overriding `or`, `and`, `==` operators for them instead of relying on weak integers.
+- **Array Conversions (`cBuf` & `cLen`):** When passing Nim fixed arrays to C functions expecting buffer pointers and size limits, use `cBuf` and `cLen` from `sdl/private/utils`:
+  ```nim
+  import private/utils
+
+  var buffer: array[64, char]
+  SDL_GetName(buffer.cBuf, buffer.cLen)
+  ```
 
 ## 12. Strict FFI Type Mapping & Public API Boundaries (CRITICAL)
 There must be a strict, impenetrable boundary between the raw C layer and the public Nim API regarding primitive types.
@@ -117,11 +168,22 @@ There must be a strict, impenetrable boundary between the raw C layer and the pu
   - ✅ `proc caption=*(title: cstring)` (Main optimized function)
   - ✅ `proc caption=*(title: string) {.inline.} = `caption=`(title.cstring)` (Ergonomic overload)
 
-## 13. Error Handling & Null Pointers
+## 13. Error Handling, Null Pointers & Result Checkers (`private/utils`)
 - C functions that return pointers often return `NULL` on failure.
 - Do not let `nil` pointers leak into the safe Nim API. Do not use Nim `Exception` types for standard C errors.
-- Wrap functions that can fail using `std/options` (`Option[T]`).
-- Example: If `SDL_SetVideoMode` fails, return `none(Surface)`. If it succeeds, return `some(Surface(sdlSurface: ptr))`.
+- **Null Pointers to `Option[T]` (`toOption`):** Convert C pointers to `Option` using `toOption` from `sdl/private/utils`:
+  ```nim
+  import private/utils
+
+  # For wrapping into RAII objects directly:
+  let surfaceOpt = SDL_SetVideoMode(...).toOption(Surface)
+  ```
+- **Semantic Result Checking:** Use internal result helpers from `sdl/private/utils` instead of raw magic integer comparisons:
+  - `sdlOk(call)`: Checks if C call returned 0 (success).
+  - `sdlTrue(call)`: Checks if C call returned 1 (success).
+  - `sdlValid(call)`: Checks if pointer is not `nil`.
+  - `sdlNoErr(call)`: Checks if C call returned != -1 (success).
+  - `sdlNonZero(call)`: Checks if C call returned != 0 (success).
 
 ## 14. C Header Pragmas & The `bycopy` Split
 When mapping a new SDL header, you MUST separate types and functions into two distinct `{.push.}` blocks. This is required because type-specific pragmas (like `bycopy`) cannot be applied to procedure declarations.
