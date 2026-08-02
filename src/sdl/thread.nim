@@ -24,8 +24,9 @@
 ##
 ## ```nim
 ## import sdl
+## import sdl/thread
 ##
-## proc workerThread(data: pointer): cint {.cdecl.} =
+## proc workerThread(data: pointer): int32 {.cdecl.} =
 ##   echo "Worker thread started!"
 ##   # Do work...
 ##   echo "Worker thread finished!"
@@ -36,22 +37,20 @@
 ##   defer: ctx.quit()
 ##
 ##   # Create and start a thread
-##   let thread = createThread(workerThread)
-##   if thread.isSome:
-##     # Wait for thread to finish
-##     var t = thread.get
-##     let exitCode = t.wait()
-##     echo "Thread exited with code: ", exitCode
+##   var thread = initThread(workerThread).get
+##   let exitCode = thread.wait()
+##   echo "Thread exited with code: ", exitCode
 ## ```
 ##
-## ## Advantages over C SDL 1.2
+## ## C API Mapping
 ##
-## | C SDL 1.2                               | Nim SDL                                   |
-## |-----------------------------------------|-------------------------------------------|
-## | `SDL_CreateThread(...)` returns pointer | `createThread()` returns `Option[Thread]` |
-## | Manual `SDL_WaitThread()`               | `Thread` RAII auto-wait                   |
-## | `SDL_KillThread()` dangerous            | `kill()` with proper cleanup              |
-## | No type safety on thread function       | `ThreadFunc` type alias                   |
+## | C SDL 1.2                       | Nim SDL                                   |
+## |---------------------------------|-------------------------------------------|
+## | `SDL_CreateThread(fn, data)`    | `initThread()` returns `Option[Thread]`   |
+## | `SDL_WaitThread(thread, &st)`   | `thread.wait()` returns `int32`           |
+## | `SDL_KillThread(thread)`        | `thread.kill()`                           |
+## | `SDL_ThreadID()`                | `currentThreadId()` returns `ThreadId`    |
+## | `SDL_GetThreadID(thread)`       | `thread.id()` returns `ThreadId`          |
 ##
 ## ## Key Features
 ##
@@ -65,7 +64,7 @@
 ## Thread functions must follow the `ThreadFunc` signature and return an exit code.
 ##
 ## ```nim
-## proc myThread(data: pointer): cint {.cdecl.} =
+## proc myThread(data: pointer): int32 {.cdecl.} =
 ##   # Do work...
 ##   return 0  # Exit code
 ## ```
@@ -90,26 +89,38 @@ import private/utils
 # =========================================================
 
 type
-  ## The strict signature for functions that run in parallel threads.
-  ## MUST use the cdecl calling convention and return a 32-bit integer.
-  ThreadFunc* = proc(data: pointer): cint {.cdecl.}
+  ThreadId* = distinct uint32
+    ## Unique identifier for a thread.
+
+proc `==`*(x, y: ThreadId): bool {.borrow.}
+  ## Compares two ThreadId values for equality.
+
+proc `$`*(x: ThreadId): string {.borrow.}
+  ## Converts a ThreadId to its string representation.
+
+type
+  ThreadFunc* = proc(data: pointer): int32 {.cdecl.}
+    ## The strict signature for functions that run in parallel threads.
+    ## MUST use the cdecl calling convention and return a 32-bit integer.
 
 # =========================================================
 # 2. C STRUCTURES (Opaque Types) AND FFI
 # =========================================================
-{.push header: "SDL_thread.h", importc.}
-
+{.push header: "SDL_thread.h", bycopy, cdecl.}
 type
   RawThread {.importc: "SDL_Thread", incompleteStruct.} = object
+    ## Opaque C struct from SDL_thread.h. Never accessed directly.
   RawThreadPtr* = ptr RawThread
+    ## Pointer to a raw SDL_Thread for FFI interop.
+{.pop.}
 
-# Internal FFI
-proc SDL_CreateThread(fn: ThreadFunc, data: pointer): RawThreadPtr
+{.push header: "SDL_thread.h", importc, cdecl.}
+proc SDL_CreateThread(fn: proc(data: pointer): cint {.cdecl.},
+                      data: pointer): RawThreadPtr
 proc SDL_ThreadID(): uint32
 proc SDL_GetThreadID(thread: RawThreadPtr): uint32
 proc SDL_WaitThread(thread: RawThreadPtr, status: ptr cint)
 proc SDL_KillThread(thread: RawThreadPtr)
-
 {.pop.}
 
 # =========================================================
@@ -121,55 +132,68 @@ type Thread* {.requiresInit.} = object
   raw: RawThreadPtr
 
 proc `=destroy`*(t: var Thread) =
+  ## RAII destructor — waits for the thread to finish and frees the resource.
   if t.raw != nil:
     SDL_WaitThread(t.raw, nil)
     t.raw = nil
 
-proc `=sink`*(dest: var Thread; source: Thread) = sinkImpl(dest, source)
-proc `=copy`*(dest: var Thread; source: Thread) {.error.}
+proc `=sink`*(dest: var Thread; source: Thread) =
+  ## RAII move hook — transfers thread ownership from source to dest.
+  sinkImpl(dest, source)
 
-proc unsafeRaw*(t: Thread): RawThreadPtr {.inline.} = t.raw
-proc assumeRaw*(p: RawThreadPtr): Thread {.inline.} = Thread(raw: p)
+proc `=copy`*(dest: var Thread; source: Thread) {.error.}
+  ## RAII copy hook — threads are move-only, copying is forbidden.
+
+proc unsafeRaw*(t: Thread): RawThreadPtr {.inline.} =
+  ## Returns the raw SDL_Thread pointer. Use only for FFI interop.
+  t.raw
+
+proc assumeRaw*(p: RawThreadPtr): Thread {.inline.} =
+  ## Wraps a raw SDL_Thread pointer into a Thread, assuming ownership.
+  Thread(raw: p)
 
 # =========================================================
 # 4. PUBLIC API (High Abstraction and Synchronization)
 # =========================================================
 
-proc createThread*(fn: ThreadFunc; data: pointer = nil): Option[Thread] {.inline.} =
+proc initThread*(fn: ThreadFunc; data: pointer = nil): Option[Thread] {.inline.} =
   ## Creates and immediately starts a new parallel thread.
+  ##
+  ## **C API comparison:** `SDL_CreateThread` returns a raw `SDL_Thread*` (NULL
+  ## on failure) and requires manual `SDL_WaitThread`. `initThread` wraps the
+  ## result in `Option[Thread]` and destroys the thread automatically via RAII.
   ##
   ## **Example:**
   ## ```nim
-  ## proc worker(data: pointer): cint {.cdecl.} =
+  ## proc worker(data: pointer): int32 {.cdecl.} =
   ##   echo "Working..."
   ##   return 0
   ##
-  ## let thread = createThread(worker)
-  ## if thread.isSome:
-  ##   var t = thread.get
-  ##   discard t.wait()  # Wait for completion
+  ## var thread = initThread(worker).get
+  ## discard thread.wait()  # Wait for completion
   ## ```
-  SDL_CreateThread(fn, data).toOption(Thread)
+  let p = SDL_CreateThread(cast[proc(data: pointer): cint {.cdecl.}](fn), data)
+  if p == nil: none(Thread) else: some(Thread(raw: p))
 
-proc currentThreadId*(): uint32 {.inline.} =
+proc currentThreadId*(): ThreadId {.inline.} =
   ## Unique ID of the currently executing thread.
   ##
   ## **Example:**
   ## ```nim
   ## echo "Current thread ID: ", currentThreadId()
   ## ```
-  SDL_ThreadID()
+  ThreadId(SDL_ThreadID())
 
-proc getId*(t: Thread): uint32 {.inline.} =
+proc id*(t: Thread): ThreadId {.inline.} =
   ## Unique ID of a specific thread.
   ##
   ## **Example:**
   ## ```nim
-  ## let thread = createThread(worker).get
-  ## echo "Thread ID: ", thread.getId()
+  ## let thread = initThread(worker).get
+  ## echo "Thread ID: ", thread.id()
   ## ```
   assert t.raw != nil, "Attempted to read ID of a dead/joined thread!"
-  result = SDL_GetThreadID(t.raw)
+  ThreadId(SDL_GetThreadID(t.raw))
 
 proc wait*(t: var Thread): int32 {.inline.} =
   ## Blocks until the specified thread finishes (joins the thread).
@@ -177,7 +201,7 @@ proc wait*(t: var Thread): int32 {.inline.} =
   ##
   ## **Example:**
   ## ```nim
-  ## var thread = createThread(worker).get
+  ## var thread = initThread(worker).get
   ## let exitCode = thread.wait()
   ## echo "Thread exited with code: ", exitCode
   ## ```
@@ -196,7 +220,7 @@ proc kill*(t: var Thread) {.inline.} =
   ##
   ## **Example:**
   ## ```nim
-  ## var thread = createThread(worker).get
+  ## var thread = initThread(worker).get
   ## # ... if thread is stuck ...
   ## thread.kill()  # Force termination
   ## ```
