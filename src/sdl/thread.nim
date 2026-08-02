@@ -42,6 +42,15 @@
 ##   echo "Thread exited with code: ", exitCode
 ## ```
 ##
+## ## Advantages over C SDL 1.2
+##
+## | C SDL 1.2                                | Nim SDL                                   |
+## |------------------------------------------|-------------------------------------------|
+## | `SDL_CreateThread(...)` returns pointer  | `initThread()` returns `Option[Thread]`  |
+## | Manual `SDL_WaitThread()`                | `Thread` RAII auto-wait                   |
+## | `SDL_KillThread()` dangerous             | `kill()` with proper cleanup              |
+## | No type safety on thread function        | `ThreadFunc` type alias                   |
+##
 ## ## C API Mapping
 ##
 ## | C SDL 1.2                       | Nim SDL                                   |
