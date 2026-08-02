@@ -52,14 +52,23 @@ AI models frequently hallucinate or violate NEP-1 due to cross-language training
 - **Exceptions (Action Functions):** You MUST keep the `get` and `set` prefixes for functions that represent complex operations, global context changes, or where dropping it would make the verb unclear (e.g., `getSdlError()`, `setSdlError()`, `setVideoMode()`).
 
 ## 4. Documentation and Docstrings (NEP-1)
-- **Docstring Placement (Strict):** Docstrings (`##`) MUST be placed **inside** the procedure/template body. For single-line declarations (like `{.borrow.}`, `{.importc.}`, or enum fields), they MUST be **indented immediately below** the declaration. NEVER place docstrings above the declaration.
-  - ✅ `proc id*(t: Thread): ThreadId =` \n `  ## Gets the thread ID.`
-  - ✅ `proc \`==\`*(x, y: ThreadId): bool {.borrow.}` \n `  ## Compares for equality.`
-- **Module-Level Mapping Table:** The top-level module documentation (at the very beginning of the file) MUST include a distinct Markdown table (e.g., under a `## C API Mapping` heading) providing a complete 1:1 mapping between the raw C SDL 1.2 functions and their high-level Nim wrappers. **Do NOT overwrite, replace, or merge this with existing architectural tables (like "Advantages over C SDL").** Keep them separate.
+- **Docstring Placement (STRICT REQUIREMENT):** Nim's compiler strictly requires docstrings (`##`) to be associated correctly.
+  - For procedures with bodies, place the docstring **inside** the body, indented.
+  - For single-line declarations (e.g., `{.borrow.}`, `{.importc.}`, `{.error.}`, or enum fields), you MUST place the docstring **on the line immediately following the declaration, with exactly one level of indentation**.
+  - ❌ NEVER place docstrings above the declaration.
+  - ✅ Correct Example:
+    ```nim
+    proc `==`*(x, y: ThreadId): bool {.borrow.}
+      ## Compares two ThreadId values for equality.
+    ```
+- **Two Mandatory Module-Level Tables:** Every top-level module documentation (at the very beginning of the file) MUST include **TWO distinct Markdown tables**:
+  1. `## Advantages over C SDL 1.2`: Explaining the architectural, ergonomic, and safety improvements (e.g., RAII, `Option` types, strong typing) compared to raw C.
+  2. `## C API Mapping`: Providing a complete 1:1 mapping between the raw C SDL 1.2 functions and their high-level Nim wrappers.
+  **Crucial:** Do NOT merge, replace, or overwrite one table with the other. They serve completely different purposes (the *why* vs. the *where*) and MUST coexist as separate entities.
 - **Mandatory Universal Documentation:** EVERY symbol (types, procedures, templates, iterators, constants) MUST be thoroughly documented using Nim's `##` docstring syntax. **This applies strictly to unexported/internal symbols as well.**
-- **No Exceptions for Boilerplate or FFI:** You MUST explicitly document internal C structures (e.g., unexported `RawThread`), pointer aliases, RAII hooks (`=destroy`, `=sink`, `=copy`), and borrowed operators (`==`, `$`). Do not assume they are self-explanatory.
+- **No Exceptions for Boilerplate or FFI:** You MUST explicitly document internal C structures (e.g., unexported `RawThread`), pointer aliases, RAII hooks (`=destroy`, `=sink`, `=copy`), and borrowed operators (`==`, `$`). Do not assume they are self-explanatory just because they are boilerplate.
 - **Code Examples:** High-level API functions must include practical, idiomatic Nim examples within `## ```nim ... ```` blocks to demonstrate proper usage.
-- **Function-Level C API Comparison:** When a specific wrapper proc significantly changes the ergonomics or safety of the underlying C function, include a brief explanation comparing the raw C usage to the Nim wrapper in its docstring.z
+- **Function-Level C API Comparison:** When a specific wrapper proc significantly changes the ergonomics or safety of the underlying C function, include a brief explanation comparing the raw C usage to the Nim wrapper in its docstring.
 
 ## 5. Constructor Naming Conventions (`init` vs `new` vs `create`)
 Nim has strict semantic conventions for instantiation prefixes based on memory management. Since this wrapper relies heavily on RAII and value types (`object`) rather than the Garbage Collector (`ref object`), you MUST follow these naming rules for constructors:
